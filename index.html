@@ -261,7 +261,7 @@ var CONFIG = {
 var M = window.STUDY_MANIFEST;
 var $ = function (id) { return document.getElementById(id); };
 var state = { trials: [], i: 0, rows: [], pid: '', t0: 0, sending: false, sent: 0,
-              lastError: '', locked: false };
+              lastError: '', locked: false, waiters: [] };
 
 function participantId() {
   var q = new URLSearchParams(location.search);
@@ -293,14 +293,29 @@ function enqueue(row) {
   setQueue(q);
 }
 
+/* Callbacks waiting on the current send, so an in-flight request is never
+   mistaken for a failure. */
+function settle(ok) {
+  var waiting = state.waiters;
+  state.waiters = [];
+  for (var i = 0; i < waiting.length; i++) {
+    try { waiting[i](ok); } catch (e) {}
+  }
+}
+
 /* One POST carries whatever is still queued. row_id makes retries idempotent,
    so a request that silently succeeded cannot duplicate rows. */
 function flush(done) {
+  if (done) state.waiters.push(done);
   var pending = queue();
-  if (!CONFIG.endpoint || !pending.length || state.sending) {
-    if (done) done(!pending.length);
+  if (!CONFIG.endpoint) {
+    state.lastError = 'no endpoint is configured in this copy of the page';
+    settle(false);
     return;
   }
+  if (!pending.length) { settle(true); return; }
+  // A request is already on its way: wait for it rather than reporting failure.
+  if (state.sending) return;
   state.sending = true;
   fetch(CONFIG.endpoint, {
     method: 'POST',
@@ -319,14 +334,14 @@ function flush(done) {
     state.lastError = '';
     state.sending = false;
     mark();
-    if (done) done(true);
+    settle(true);
   }).catch(function (err) {
     // Surface the reason: a silent "pending" is how a broken endpoint stays
     // unnoticed until the very end of a session.
     state.lastError = String((err && err.message) || err || 'network error');
     state.sending = false;
     mark();
-    if (done) done(false);
+    settle(false);
   });
 }
 
@@ -428,6 +443,37 @@ function toggleZoom() {
 }
 
 /* -------------------------------------------------------------------- done */
+/*
+ * Send what is left, retrying a few times on its own -- a participant will not
+ * click a retry button, and a single hiccup should not send them away thinking
+ * their work was lost.
+ */
+function finishSend(attempt) {
+  attempt = attempt || 1;
+  var MAX = 4;
+  if (CONFIG.endpoint) {
+    $('doneMeta').textContent = attempt === 1 ? 'Saving your answers…'
+      : 'Saving your answers… (attempt ' + attempt + ' of ' + MAX + ')';
+  }
+  flush(function (ok) {
+    if (ok && CONFIG.endpoint) {
+      $('doneWarn').classList.add('hide');
+      $('doneWhy').textContent = '';
+      $('retry').classList.add('hide');
+      $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
+      return;
+    }
+    if (CONFIG.endpoint && attempt < MAX) {
+      setTimeout(function () { finishSend(attempt + 1); }, 700 * attempt);
+      return;
+    }
+    $('doneWarn').classList.remove('hide');
+    $('doneWhy').textContent = state.lastError ? 'Reason: ' + state.lastError : '';
+    $('retry').classList.remove('hide');
+    $('doneMeta').textContent = 'You can close this tab now.';
+  });
+}
+
 function finish() {
   $('trial').classList.add('hide');
   $('done').classList.remove('hide');
@@ -435,15 +481,7 @@ function finish() {
     state.pid + '.';
   $('doneMeta').textContent = 'You can close this tab now.';
   $('dl').classList.remove('hide');
-  flush(function (ok) {
-    if (ok && CONFIG.endpoint) {
-      $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
-      return;
-    }
-    $('doneWarn').classList.remove('hide');
-    $('doneWhy').textContent = state.lastError ? 'Reason: ' + state.lastError : '';
-    $('retry').classList.remove('hide');
-  });
+  finishSend(1);
 }
 
 function download() {
@@ -490,15 +528,7 @@ function init() {
 
   $('start').onclick = begin;
   $('dl').onclick = download;
-  $('retry').onclick = function () {
-    flush(function (ok) {
-      if (ok) {
-        $('doneWarn').classList.add('hide');
-        $('retry').classList.add('hide');
-        $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
-      }
-    });
-  };
+  $('retry').onclick = function () { finishSend(1); };
   $('zoomBtn').onclick = toggleZoom;
   $('tieBtn').onclick = function () { choose(null); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-slot]'), function (el) {
