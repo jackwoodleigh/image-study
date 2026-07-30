@@ -114,6 +114,10 @@
   .panel:hover .badge, .panel.picked .badge { background:var(--acc); color:var(--acc-fg); }
   .panel .bar .label { font-weight:600; font-size:.92rem; }
   .panel .bar .hint { color:var(--faint); font-size:.85rem; margin-left:auto; }
+  .prevmark {
+    padding:2px 9px; border-radius:999px; background:var(--acc-soft); color:var(--acc);
+    font-size:.78rem; font-weight:650;
+  }
 
   .foot { display:flex; align-items:center; gap:14px; max-width:2560px; width:100%;
           margin:0 auto; padding:4px 24px 18px; }
@@ -177,8 +181,9 @@
     <li>Click that row, or press <kbd>1</kbd> / <kbd>2</kbd> (or <kbd>&uarr;</kbd> / <kbd>&darr;</kbd>).</li>
     <li>Press <kbd>Z</kbd> any time to inspect both rows at full size.</li>
   </ol>
-  <p>There's no right answer, and you can't go back &mdash; go with your first impression.
-     <strong>A wide window helps</strong>, since the images are wide.</p>
+  <p>There's no right answer &mdash; go with your first impression, though you can step
+     <strong>back</strong> if you change your mind. <strong>A wide window helps</strong>, since
+     the images are wide.</p>
 
   <div class="note" id="privacy">
     No personal data is collected &mdash; no name, no email, no login. We record only your choices,
@@ -221,6 +226,7 @@
       <div class="bar">
         <span class="badge">1</span>
         <span class="label">Prefer this row</span>
+        <span class="prevmark hide">your last answer</span>
         <span class="hint">click, or press <kbd>1</kbd> / <kbd>&uarr;</kbd></span>
       </div>
     </div>
@@ -230,12 +236,14 @@
       <div class="bar">
         <span class="badge">2</span>
         <span class="label">Prefer this row</span>
+        <span class="prevmark hide">your last answer</span>
         <span class="hint">click, or press <kbd>2</kbd> / <kbd>&darr;</kbd></span>
       </div>
     </div>
   </div>
 
   <div class="foot">
+    <button class="link" id="backBtn">&larr; Back</button>
     <button class="link" id="zoomBtn">Inspect at full size (Z)</button>
     <button class="link hide" id="tieBtn">No preference (0)</button>
     <span class="grow"></span>
@@ -255,6 +263,7 @@
   <div class="actions">
     <button class="btn ghost hide" id="dl">Download my answers</button>
     <button class="btn quiet hide" id="retry">Try sending again</button>
+    <button class="link" id="backFromDone">&larr; Change my last answer</button>
   </div>
   <p class="mut" id="doneMsg"></p>
 </section>
@@ -339,9 +348,18 @@ function queue() {
 function setQueue(q) {
   try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch (e) {}
 }
+/*
+ * Queued rows are keyed by row_id (participant + trial number). Re-answering a
+ * comparison after going back replaces the queued row instead of adding a second
+ * one, so only the final answer is ever sent.
+ */
 function enqueue(row) {
+  var arr = Study.toArray(M, row);
   var q = queue();
-  q.push(Study.toArray(M, row));
+  for (var i = 0; i < q.length; i++) {
+    if (String(q[i][0]) === String(arr[0])) { q[i] = arr; setQueue(q); return; }
+  }
+  q.push(arr);
   setQueue(q);
 }
 
@@ -436,6 +454,14 @@ function show() {
   $('imgBot').src = Study.rowUrl(M, t.bottom, t.ci);
   $('prog').textContent = (state.i + 1) + ' of ' + state.trials.length;
   $('pbar').value = state.i;
+  $('backBtn').style.visibility = state.i > 0 ? 'visible' : 'hidden';
+  // Revisiting a comparison: show which row they picked last time.
+  var prev = state.rows[state.i];
+  ['top', 'bottom'].forEach(function (slot) {
+    var el = document.querySelector('.panel[data-slot="' + slot + '"] .prevmark');
+    if (prev && prev.chosen_position === slot) el.classList.remove('hide');
+    else el.classList.add('hide');
+  });
   var chip = $('cls');
   if (CONFIG.showClassLabel && cls.label) {
     chip.textContent = 'both rows: ' + cls.label;
@@ -465,7 +491,9 @@ function choose(slot) {
     dpr: window.devicePixelRatio || 1,
     userAgent: navigator.userAgent
   });
-  state.rows.push(row);
+  // Indexed by trial, not appended: answering a comparison again after going
+  // back overwrites that answer rather than recording a second one.
+  state.rows[state.i] = row;
   enqueue(row);
 
   state.locked = true;
@@ -479,6 +507,20 @@ function choose(slot) {
     flush();
     show();
   }, CONFIG.pickFlashMs);
+}
+
+/*
+ * Step back to the previous comparison. Nothing is deleted: the earlier answer
+ * stands unless it is replaced, and because the replacement carries the same
+ * row_id the collector overwrites that row rather than storing both.
+ */
+function goBack() {
+  if (state.locked || state.i <= 0) return;
+  state.i--;
+  closeZoom();
+  $('done').classList.add('hide');
+  $('trial').classList.remove('hide');
+  show();
 }
 
 /* -------------------------------------------------------------------- zoom */
@@ -634,8 +676,8 @@ function finishSend(attempt) {
 function finish() {
   $('trial').classList.add('hide');
   $('done').classList.remove('hide');
-  $('doneMsg').textContent = state.rows.length + ' comparisons recorded. Your ID is ' +
-    state.pid + '.';
+  $('doneMsg').textContent = state.rows.filter(Boolean).length +
+    ' comparisons recorded. Your ID is ' + state.pid + '.';
   $('doneMeta').textContent = 'You can close this tab now.';
   $('dl').classList.remove('hide');
   finishSend(1);
@@ -687,6 +729,8 @@ function init() {
   $('dl').onclick = download;
   $('retry').onclick = function () { finishSend(1); };
   $('zoomBtn').onclick = toggleZoom;
+  $('backBtn').onclick = goBack;
+  $('backFromDone').onclick = goBack;
   $('tieBtn').onclick = function () { choose(null); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-slot]'), function (el) {
     el.addEventListener('click', function () { choose(el.getAttribute('data-slot')); });
@@ -711,6 +755,8 @@ function init() {
     if (e.key === '1' || e.key === 'ArrowUp') { choose('top'); e.preventDefault(); }
     else if (e.key === '2' || e.key === 'ArrowDown') { choose('bottom'); e.preventDefault(); }
     else if (e.key === '0' && CONFIG.allowNoPreference) choose(null);
+    // Backspace would otherwise be a browser "back" in some setups
+    else if (e.key === 'Backspace') { goBack(); e.preventDefault(); }
   });
   window.addEventListener('resize', function () {
     if (!$('trial').classList.contains('hide') && !gateWidth()) {

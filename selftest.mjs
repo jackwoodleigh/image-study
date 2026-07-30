@@ -79,6 +79,27 @@ for (const r of rows) {
 assert.equal(new Set(rows.map(r => r.row_id)).size, rows.length, 'row_id not unique');
 console.log('[ok] every row: one winner, absent model blank, unique row_id');
 
+/*
+ * Going back and answering again must produce the SAME row_id, so the collector
+ * overwrites that comparison instead of storing two answers for it.
+ */
+const first = Study.buildRow(M, {
+  trial: trials[3], slot: 'top', participant: 'w-abc123', trialNumber: 4,
+  timestamp: '2026-07-29 12:00:00', responseMs: 900, viewport: '1600x900', dpr: 2,
+  userAgent: 'node'
+});
+const revised = Study.buildRow(M, {
+  trial: trials[3], slot: 'bottom', participant: 'w-abc123', trialNumber: 4,
+  timestamp: '2026-07-29 12:01:00', responseMs: 4200, viewport: '1600x900', dpr: 2,
+  userAgent: 'node'
+});
+assert.equal(revised.row_id, first.row_id, 'a revised answer must reuse the row_id');
+assert.notEqual(revised.winner, first.winner, 'the revision should record the other row');
+assert.equal(revised.winner, first.loser);
+assert.equal(revised[revised.winner], 1);
+assert.equal(revised[first.winner], 0);
+console.log('[ok] revised answer reuses row_id', revised.row_id, 'and flips the winner');
+
 // tallies must reconstruct the matrix the desktop app would build
 const wins = {};
 for (const r of rows) wins[r.winner + '>' + r.loser] = (wins[r.winner + '>' + r.loser] || 0) + 1;

@@ -36,21 +36,31 @@ function doPost(e) {
       sheet.setFrozenRows(1);
     }
 
-    var seen = {};
+    // row_id is participant + trial number, so it identifies one comparison.
+    // Storing by that key means a retry is harmless AND a participant who steps
+    // back and answers again replaces their earlier answer instead of adding a
+    // second row for the same comparison.
+    var rowOf = {};
     if (sheet.getLastRow() > 1) {
       var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-      for (var i = 0; i < ids.length; i++) seen[String(ids[i][0])] = true;
+      for (var i = 0; i < ids.length; i++) rowOf[String(ids[i][0])] = i + 2;
     }
 
-    var added = 0;
+    var added = 0, updated = 0;
     for (var j = 0; j < rows.length; j++) {
-      if (seen[String(rows[j][0])]) continue;   // row_id already stored
-      sheet.appendRow(rows[j]);
-      seen[String(rows[j][0])] = true;
-      added++;
+      var incoming = rows[j];
+      var where = rowOf[String(incoming[0])];
+      if (where) {
+        sheet.getRange(where, 1, 1, incoming.length).setValues([incoming]);
+        updated++;
+      } else {
+        sheet.appendRow(incoming);
+        rowOf[String(incoming[0])] = sheet.getLastRow();
+        added++;
+      }
     }
-    if (added) maybeRebuild();
-    return json({ ok: true, added: added, skipped: rows.length - added });
+    if (added || updated) maybeRebuild();
+    return json({ ok: true, added: added, updated: updated });
   } catch (err) {
     return json({ ok: false, error: String(err) });
   } finally {
