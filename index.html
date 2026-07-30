@@ -220,7 +220,7 @@
       <h1 id="q">Which row of images do you prefer?</h1>
       <span class="chip" id="cls"></span>
       <span class="count" id="prog" aria-live="polite"></span>
-      <button class="btn small" id="backBtn">&larr; Back</button>
+      <button class="btn small hide" id="backBtn">&larr; Back</button>
     </div>
     <progress id="pbar" value="0" max="1"></progress>
   </div>
@@ -457,7 +457,9 @@ function show() {
   $('imgBot').src = Study.rowUrl(M, t.bottom, t.ci);
   $('prog').textContent = (state.i + 1) + ' of ' + state.trials.length;
   $('pbar').value = state.i;
-  $('backBtn').style.visibility = state.i > 0 ? 'visible' : 'hidden';
+  // display, not visibility: on the first comparison the button takes up no
+  // space at all, so the class chip and counter sit against the right edge.
+  $('backBtn').classList.toggle('hide', state.i === 0);
   // Revisiting a comparison: show which row they picked last time.
   var prev = state.rows[state.i];
   ['top', 'bottom'].forEach(function (slot) {
