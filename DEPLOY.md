@@ -105,6 +105,40 @@ bottom-right when a send succeeds.
 
 ---
 
+## The Summary tab
+
+The script keeps a second tab called **Summary** next to the raw responses,
+holding the same statistics as the desktop app's final screen:
+
+- **Ranking** — each model's share of comparisons won, who it beats, who beats
+  it. Models level on win rate are ordered by their head-to-head result, and the
+  `note` column says so.
+- **Head to head** — one line per pair: `preferred / over / score / rate /
+  p (two-sided) / significant?`. Significant pairs are highlighted green.
+- **Preference matrix** — lower triangle only: how often the ROW model was
+  preferred over the COLUMN model. Plus the same thing as a rate, coloured by
+  which model won.
+- **Per participant** — comparisons done, **median response time** (a fast
+  median means someone was clicking without looking) and their win rate per
+  model, so you can spot a rater who disagrees with everyone else.
+
+It rebuilds automatically as responses arrive, at most once a minute, and you
+can force it from the **Study → Rebuild summary** menu in the spreadsheet.
+
+The maths is a port of `preference_study.py` and is tested against it:
+`node web/summary_selftest.mjs` feeds `results/all_trials.csv` through the Apps
+Script functions and asserts the ranking, matrix and p-values come out identical
+to what the desktop app wrote. The Sheet and your offline analysis cannot drift
+apart.
+
+### After editing the script
+
+Saving in the Apps Script editor is enough for the **menu** to use the new code
+(reload the spreadsheet once so the menu appears). The **deployed endpoint**
+keeps running the version you deployed, so to update what participants hit:
+**Deploy → Manage deployments → pencil → Version: New version → Deploy.** That
+keeps the same `/exec` URL.
+
 ## Getting the data back
 
 **File → Download → Comma-separated values (.csv)**, then:

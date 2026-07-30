@@ -6,105 +6,206 @@
 <meta name="robots" content="noindex">
 <title>Image preference study</title>
 <style>
-  :root { --bg:#f4f4f5; --fg:#18181b; --mut:#6b7280; --line:#d4d4d8; --acc:#2563eb; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#18181b; --fg:#f4f4f5; --mut:#a1a1aa; --line:#3f3f46; --acc:#60a5fa; }
+  :root {
+    --bg:#f6f7f9; --surface:#ffffff; --fg:#16181d; --mut:#666e7a; --faint:#8b93a1;
+    --line:#dfe3e9; --line2:#eceff3; --acc:#2f5fe0; --acc-fg:#ffffff; --acc-soft:#eaf0ff;
+    --ok:#0f7a4d; --bad:#b3261e; --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --r:12px;
   }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
-  .wrap { max-width:min(2560px, 98vw); margin:0 auto; padding:14px 16px 24px; }
-  .card { max-width:760px; margin:6vh auto; padding:28px 32px; background:color-mix(in srgb, var(--bg) 88%, #fff);
-          border:1px solid var(--line); border-radius:12px; }
-  h1 { font-size:1.5rem; margin:0 0 12px; }
-  h2 { font-size:1.05rem; margin:22px 0 6px; }
-  p { margin:10px 0; }
-  ul { margin:10px 0; padding-left:22px; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1115; --surface:#171a20; --fg:#e8eaee; --mut:#a0a7b4; --faint:#7c8492;
+      --line:#2a2f39; --line2:#22262e; --acc:#7aa2ff; --acc-fg:#0f1115; --acc-soft:#1b2438;
+      --ok:#4ade80; --bad:#f87171; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15.5px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1 { font-size:1.6rem; line-height:1.25; letter-spacing:-.015em; margin:0 0 10px; font-weight:650; }
+  h2 { font-size:.82rem; letter-spacing:.07em; text-transform:uppercase; color:var(--faint);
+       margin:26px 0 8px; font-weight:650; }
+  p { margin:11px 0; }
+  a { color:var(--acc); }
   .mut { color:var(--mut); font-size:.9em; }
-  .warn { color:#b91c1c; font-size:.9em; }
-  @media (prefers-color-scheme: dark) { .warn { color:#f87171; } }
-  button { font:inherit; }
-  .btn { display:inline-block; padding:11px 20px; border:1px solid var(--acc); border-radius:8px;
-         background:var(--acc); color:#fff; font-weight:600; cursor:pointer; }
-  .btn.ghost { background:transparent; color:var(--acc); }
-  .btn:disabled { opacity:.5; cursor:default; }
+  .warn { color:var(--bad); font-size:.9em; }
   .hide { display:none !important; }
 
-  /* trial screen */
-  .bar { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
-  .bar h1 { font-size:1.15rem; margin:0; }
-  .bar .grow { flex:1; }
-  #cls { text-align:center; font-weight:700; margin:2px 0 6px; }
-  progress { width:100%; height:6px; }
-  .rowbox { border:2px solid var(--line); border-radius:6px; overflow:hidden; background:#111;
-            line-height:0; cursor:pointer; }
-  .rowbox img { width:100%; height:auto; display:block; }
-  .pick { width:100%; margin:6px 0 14px; padding:10px; border:1px solid var(--line);
-          border-radius:8px; background:transparent; color:var(--fg); font-weight:600; cursor:pointer; }
-  .pick:hover, .rowbox:hover { border-color:var(--acc); }
-  .foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px; }
-  .foot .grow { flex:1; }
-  .link { background:none; border:none; color:var(--acc); cursor:pointer; padding:4px; font:inherit; }
+  /* ---------- cards (intro / done / gate) ---------- */
+  .card {
+    max-width:720px; margin:8vh auto; padding:36px 40px 32px; background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow);
+  }
+  .card .lede { font-size:1.05rem; color:var(--mut); margin-top:0; }
+  .steps { list-style:none; margin:12px 0 0; padding:0; counter-reset:s; }
+  .steps li { counter-increment:s; position:relative; padding:0 0 0 34px; margin:11px 0; }
+  .steps li::before {
+    content:counter(s); position:absolute; left:0; top:1px; width:22px; height:22px;
+    border-radius:50%; background:var(--acc-soft); color:var(--acc);
+    font-size:.78rem; font-weight:700; display:grid; place-items:center;
+  }
+  .note {
+    margin-top:22px; padding:14px 16px; background:var(--line2); border-radius:10px;
+    font-size:.9rem; color:var(--mut);
+  }
+  kbd {
+    font:600 .8em/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding:3px 6px;
+    border:1px solid var(--line); border-bottom-width:2px; border-radius:5px;
+    background:var(--surface); color:var(--fg); white-space:nowrap;
+  }
+  .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:26px; }
 
-  /* zoom overlay */
-  #zoom { position:fixed; inset:0; background:#000; z-index:50; display:flex; flex-direction:column; }
-  #zoomScroll { flex:1; overflow:auto; display:flex; flex-direction:column; justify-content:center; }
-  #zoomScroll img { display:block; image-rendering:auto; }
-  #zoomScroll img + img { margin-top:10px; }
-  #zoomBar { display:flex; gap:10px; padding:10px; background:#111; color:#eee; align-items:center; }
+  button { font:inherit; color:inherit; }
+  .btn {
+    appearance:none; padding:11px 22px; border:1px solid var(--acc); border-radius:9px;
+    background:var(--acc); color:var(--acc-fg); font-weight:600; cursor:pointer;
+    transition:filter .12s ease, transform .06s ease;
+  }
+  .btn:hover { filter:brightness(1.07); }
+  .btn:active { transform:translateY(1px); }
+  .btn.ghost { background:transparent; color:var(--acc); }
+  .btn.quiet { background:transparent; color:var(--mut); border-color:var(--line); }
+  .link { background:none; border:none; color:var(--acc); cursor:pointer; padding:6px 2px; font:inherit; }
+  .link:hover { text-decoration:underline; }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:6px; }
+
+  /* ---------- trial ---------- */
+  #trial { display:flex; flex-direction:column; min-height:100vh; }
+  .topbar {
+    position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 24px 0;
+  }
+  .topline { display:flex; align-items:center; gap:18px; max-width:2560px; margin:0 auto; }
+  .topline h1 { font-size:1.1rem; margin:0; font-weight:600; flex:1; }
+  .chip {
+    padding:4px 12px; border-radius:999px; background:var(--acc-soft); color:var(--acc);
+    font-size:.85rem; font-weight:650; white-space:nowrap;
+  }
+  .count { font-variant-numeric:tabular-nums; color:var(--mut); font-size:.9rem; white-space:nowrap; }
+  progress { -webkit-appearance:none; appearance:none; display:block; width:100%; height:3px;
+             border:0; background:transparent; margin-top:12px; }
+  progress::-webkit-progress-bar { background:var(--line); }
+  progress::-webkit-progress-value { background:var(--acc); transition:width .2s ease; }
+  progress::-moz-progress-bar { background:var(--acc); }
+
+  .stage { flex:1; display:flex; flex-direction:column; justify-content:center; gap:14px;
+           max-width:2560px; width:100%; margin:0 auto; padding:18px 24px 8px; }
+  .panel {
+    border:1px solid var(--line); border-radius:var(--r); background:var(--surface);
+    box-shadow:var(--shadow); overflow:hidden; cursor:pointer;
+    transition:border-color .12s ease, box-shadow .12s ease, transform .06s ease;
+  }
+  .panel:hover { border-color:var(--acc); }
+  .panel:active { transform:translateY(1px); }
+  .panel.picked { border-color:var(--acc); box-shadow:0 0 0 3px var(--acc-soft), var(--shadow); }
+  .panel .shot { display:block; line-height:0; background:#0b0d10; }
+  .panel .shot img { display:block; width:100%; height:auto; }
+  .panel .bar {
+    display:flex; align-items:center; gap:12px; padding:9px 14px; border-top:1px solid var(--line2);
+  }
+  .badge {
+    width:24px; height:24px; flex:none; border-radius:7px; background:var(--line2); color:var(--mut);
+    font-size:.82rem; font-weight:700; display:grid; place-items:center;
+  }
+  .panel:hover .badge, .panel.picked .badge { background:var(--acc); color:var(--acc-fg); }
+  .panel .bar .label { font-weight:600; font-size:.92rem; }
+  .panel .bar .hint { color:var(--faint); font-size:.85rem; margin-left:auto; }
+
+  .foot { display:flex; align-items:center; gap:14px; max-width:2560px; width:100%;
+          margin:0 auto; padding:4px 24px 18px; }
+  .foot .grow { flex:1; }
+
+  /* ---------- zoom ---------- */
+  #zoom { position:fixed; inset:0; z-index:100; background:#07080a; display:flex; flex-direction:column; }
+  #zoomScroll { flex:1; overflow:auto; display:flex; flex-direction:column; justify-content:center; gap:12px; }
+  #zoomScroll img { display:block; }
+  #zoomBar { display:flex; align-items:center; gap:10px; padding:12px 18px;
+             background:#101216; border-top:1px solid #23262d; color:#e8eaee; }
+  #zoomBar .grow { flex:1; }
+  #zoomBar .mut { color:#98a0ad; }
 </style>
 </head>
 <body>
 
 <!-- ------------------------------------------------------------------ intro -->
 <section id="intro" class="card">
-  <h1>Which generated image do you prefer?</h1>
-  <p>Thank you for helping. This takes about <strong>4 minutes</strong> and is completely anonymous.</p>
-  <h2>What you will do</h2>
-  <p>You will see <strong>two rows of computer-generated images</strong>, one above the other. Both rows
-     show the same kind of thing (both dogs, both palaces, and so on) but they were made by two
-     different systems.</p>
-  <p>Pick the row you think looks <strong>better overall</strong> &mdash; more realistic, more
-     convincing, fewer oddities. There is no right answer; go with your first impression.</p>
-  <ul>
-    <li>Click a row, or its button, or press <kbd>1</kbd>/<kbd>2</kbd> (or <kbd>&uarr;</kbd>/<kbd>&darr;</kbd>).</li>
-    <li>Press <kbd>Z</kbd> to see both rows at full size if you want a closer look.</li>
-    <li><strong>Make your browser window as wide as you can</strong> &mdash; the images are wide.</li>
-  </ul>
-  <h2>Privacy</h2>
-  <p class="mut">No personal data is collected: no name, no email, no login. We store only your choices,
-     how long each took, and your screen size, under a random ID.</p>
-  <p><button class="btn" id="start">Start</button></p>
-  <p class="mut" id="introMeta"></p>
+  <h1>Which set of images looks better?</h1>
+  <p class="lede">A short visual comparison. About <strong>4 minutes</strong>, completely anonymous.</p>
+
+  <h2>What you'll do</h2>
+  <p>You'll see <strong>two rows of computer-generated images</strong>, one above the other. Both rows
+     show the same subject &mdash; both palaces, both red pandas, and so on &mdash; but they were
+     produced by two different systems.</p>
+  <ol class="steps">
+    <li>Decide which row looks <strong>better overall</strong>: more realistic, more convincing,
+        fewer strange details.</li>
+    <li>Click that row, or press <kbd>1</kbd> / <kbd>2</kbd> (or <kbd>&uarr;</kbd> / <kbd>&darr;</kbd>).</li>
+    <li>Press <kbd>Z</kbd> any time to inspect both rows at full size.</li>
+  </ol>
+  <p>There's no right answer, and you can't go back &mdash; go with your first impression.
+     <strong>A wide window helps</strong>, since the images are wide.</p>
+
+  <div class="note" id="privacy">
+    No personal data is collected &mdash; no name, no email, no login. We record only your choices,
+    how long each took, and your window size, under a random ID.
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="start">Start</button>
+    <span class="mut" id="introMeta"></span>
+  </div>
 </section>
 
 <!-- ------------------------------------------------------------- too narrow -->
 <section id="toosmall" class="card hide">
-  <h1>Please use a wider window</h1>
-  <p>The images in this study are very wide, and on a narrow screen they shrink so much that the
-     comparison stops being meaningful.</p>
-  <p><strong>Please open this link on a laptop or desktop</strong>, and widen the window
-     (or rotate a tablet to landscape).</p>
-  <p class="mut">Needed: about <span id="needW">1100</span> px of width. Yours: <span id="haveW"></span> px.</p>
+  <h1>A wider window is needed</h1>
+  <p class="lede">The images in this study are very wide. On a narrow screen they shrink so much
+     that the comparison stops being meaningful, so the data wouldn't be usable.</p>
+  <p><strong>Please open this link on a laptop or desktop</strong> and widen the window, or rotate a
+     tablet to landscape.</p>
+  <div class="note">
+    Needed: about <strong><span id="needW">1100</span> px</strong> of width.
+    This window: <strong><span id="haveW"></span> px</strong>.
+  </div>
 </section>
 
 <!-- ------------------------------------------------------------------ trial -->
-<section id="trial" class="wrap hide">
-  <div class="bar">
-    <h1 id="q">Which row of images do you prefer?</h1>
-    <span class="grow"></span>
-    <span class="mut" id="prog"></span>
+<section id="trial" class="hide">
+  <div class="topbar">
+    <div class="topline">
+      <h1 id="q">Which row of images do you prefer?</h1>
+      <span class="chip" id="cls"></span>
+      <span class="count" id="prog" aria-live="polite"></span>
+    </div>
+    <progress id="pbar" value="0" max="1"></progress>
   </div>
-  <div id="cls"></div>
-  <progress id="pbar" value="0" max="1"></progress>
 
-  <div class="rowbox" data-slot="top"><img id="imgTop" alt="row of generated images (option 1)"></div>
-  <button class="pick" data-slot="top">Prefer this row &nbsp;(1 / &uarr;)</button>
+  <div class="stage">
+    <div class="panel" data-slot="top">
+      <span class="shot"><img id="imgTop" alt="First row of generated images"></span>
+      <div class="bar">
+        <span class="badge">1</span>
+        <span class="label">Prefer this row</span>
+        <span class="hint">click, or press <kbd>1</kbd> / <kbd>&uarr;</kbd></span>
+      </div>
+    </div>
 
-  <div class="rowbox" data-slot="bottom"><img id="imgBot" alt="row of generated images (option 2)"></div>
-  <button class="pick" data-slot="bottom">Prefer this row &nbsp;(2 / &darr;)</button>
+    <div class="panel" data-slot="bottom">
+      <span class="shot"><img id="imgBot" alt="Second row of generated images"></span>
+      <div class="bar">
+        <span class="badge">2</span>
+        <span class="label">Prefer this row</span>
+        <span class="hint">click, or press <kbd>2</kbd> / <kbd>&darr;</kbd></span>
+      </div>
+    </div>
+  </div>
 
   <div class="foot">
-    <button class="link" id="zoomBtn">Zoom to full size (Z)</button>
+    <button class="link" id="zoomBtn">Inspect at full size (Z)</button>
     <button class="link hide" id="tieBtn">No preference (0)</button>
     <span class="grow"></span>
     <span class="mut" id="saveState"></span>
@@ -113,31 +214,31 @@
 
 <!-- ------------------------------------------------------------------- done -->
 <section id="done" class="card hide">
-  <h1>All done &mdash; thank you!</h1>
-  <p id="doneMsg"></p>
+  <h1>All done &mdash; thank you</h1>
+  <p class="lede" id="doneMsg"></p>
   <p id="doneWarn" class="hide">
-    <strong>Your answers could not be sent automatically.</strong> Please click below and email
-    the file to the researcher so your work is not wasted.
+    <strong>Your answers could not be sent automatically.</strong> Please download them and send the
+    file to the researcher so your work isn't wasted.
     <br><span class="warn" id="doneWhy"></span>
   </p>
-  <p>
+  <div class="actions">
     <button class="btn ghost hide" id="dl">Download my answers</button>
-    <button class="btn ghost hide" id="retry">Try sending again</button>
-  </p>
+    <button class="btn quiet hide" id="retry">Try sending again</button>
+  </div>
   <p class="mut" id="doneMeta"></p>
 </section>
 
 <!-- ------------------------------------------------------------------- zoom -->
 <div id="zoom" class="hide">
   <div id="zoomScroll">
-    <img id="zTop" alt="option 1 at full size">
-    <img id="zBot" alt="option 2 at full size">
+    <img id="zTop" alt="First row at full size">
+    <img id="zBot" alt="Second row at full size">
   </div>
   <div id="zoomBar">
-    <button class="btn" data-slot="top">Prefer TOP (1)</button>
-    <button class="btn" data-slot="bottom">Prefer BOTTOM (2)</button>
-    <span class="grow" style="flex:1"></span>
-    <span class="mut">scroll sideways to compare &nbsp;·&nbsp; Esc or Z closes</span>
+    <button class="btn" data-slot="top">Prefer top (1)</button>
+    <button class="btn" data-slot="bottom">Prefer bottom (2)</button>
+    <span class="grow"></span>
+    <span class="mut">scroll sideways to compare &nbsp;·&nbsp; <kbd>Esc</kbd> or <kbd>Z</kbd> closes</span>
   </div>
 </div>
 
@@ -152,14 +253,15 @@ var CONFIG = {
   endpoint: 'https://script.google.com/macros/s/AKfycbxzpbWNMdsXRXGo2J0qrPNm8yGGplXcCR2lOvL26z-4TzTMtx4ihkxQ3WY7SowZLBBv9w/exec',
   minWidth: 1100,          // refuse narrower windows -- see DEPLOY.md
   showClassLabel: true,
-  allowNoPreference: false
+  allowNoPreference: false,
+  pickFlashMs: 90          // visible confirmation, and doubles as a double-click guard
 };
 
 /* ------------------------------------------------------------------- state */
 var M = window.STUDY_MANIFEST;
 var $ = function (id) { return document.getElementById(id); };
 var state = { trials: [], i: 0, rows: [], pid: '', t0: 0, sending: false, sent: 0,
-              lastError: '' };
+              lastError: '', locked: false };
 
 function participantId() {
   var q = new URLSearchParams(location.search);
@@ -265,18 +367,26 @@ function show() {
   var cls = M.classes[t.ci];
   $('imgTop').src = Study.rowUrl(M, t.top, t.ci);
   $('imgBot').src = Study.rowUrl(M, t.bottom, t.ci);
-  $('prog').textContent = 'Comparison ' + (state.i + 1) + ' of ' + state.trials.length;
+  $('prog').textContent = (state.i + 1) + ' of ' + state.trials.length;
   $('pbar').value = state.i;
-  $('cls').textContent = CONFIG.showClassLabel && cls.label ? 'both rows show: ' + cls.label : '';
+  var chip = $('cls');
+  if (CONFIG.showClassLabel && cls.label) {
+    chip.textContent = 'both rows: ' + cls.label;
+    chip.classList.remove('hide');
+  } else {
+    chip.classList.add('hide');
+  }
   state.t0 = performance.now();
   preload(state.i + 1);
   mark();
 }
 
 function choose(slot) {
+  if (state.locked) return;                       // ignore a second press mid-advance
   if ($('trial').classList.contains('hide')) return;
   if (state.i >= state.trials.length) return;
   if (!slot && !CONFIG.allowNoPreference) return;
+  // Build the row first so the response time excludes the confirmation flash.
   var row = Study.buildRow(M, {
     trial: state.trials[state.i],
     slot: slot,
@@ -290,10 +400,18 @@ function choose(slot) {
   });
   state.rows.push(row);
   enqueue(row);
-  closeZoom();
-  state.i++;
-  flush();
-  show();
+
+  state.locked = true;
+  var panel = slot ? document.querySelector('.panel[data-slot="' + slot + '"]') : null;
+  if (panel) panel.classList.add('picked');
+  setTimeout(function () {
+    if (panel) panel.classList.remove('picked');
+    closeZoom();
+    state.i++;
+    state.locked = false;
+    flush();
+    show();
+  }, CONFIG.pickFlashMs);
 }
 
 /* -------------------------------------------------------------------- zoom */
@@ -367,7 +485,7 @@ function init() {
   state.pid = participantId();
   state.trials = Study.buildTrials(M, state.pid);
   $('q').textContent = M.question || 'Which row of images do you prefer?';
-  $('introMeta').textContent = state.trials.length + ' comparisons · your ID: ' + state.pid;
+  $('introMeta').textContent = state.trials.length + ' comparisons · ID ' + state.pid;
   if (CONFIG.allowNoPreference) $('tieBtn').classList.remove('hide');
 
   $('start').onclick = begin;
