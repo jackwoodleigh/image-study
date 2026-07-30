@@ -70,12 +70,6 @@
   .btn.ghost { background:transparent; color:var(--acc); }
   .btn.quiet { background:transparent; color:var(--mut); border-color:var(--line); }
   .btn.small { padding:7px 15px; font-size:.9rem; border-radius:8px; }
-  /* same surface as the "Prefer this row" bars, so the trial screen reads as
-     one set of controls rather than three different kinds of button */
-  .btn.face { background:var(--surface); color:var(--fg); border-color:var(--line);
-              box-shadow:var(--shadow); }
-  .btn.face:hover { filter:none; border-color:var(--acc); }
-  .btn.wide { width:100%; padding:9px 14px; border-radius:var(--r); font-size:.92rem; }
   .link { background:none; border:none; color:var(--acc); cursor:pointer; padding:6px 2px; font:inherit; }
   .link:hover { text-decoration:underline; }
   :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:6px; }
@@ -126,10 +120,9 @@
     font-size:.78rem; font-weight:650;
   }
 
-  .foot { display:flex; flex-direction:column; gap:7px; max-width:2560px; width:100%;
-          margin:0 auto; padding:0 24px 16px; }
-  .statusline { display:flex; align-items:center; gap:14px; }
-  .statusline .grow { flex:1; }
+  .foot { display:flex; align-items:center; gap:14px; max-width:2560px; width:100%;
+          margin:0 auto; padding:2px 24px 18px; }
+  .foot .grow { flex:1; }
 
   /* ---------- zoom ---------- */
   #zoom { position:fixed; inset:0; z-index:100; background:#07080a; display:flex; flex-direction:column; }
@@ -151,11 +144,14 @@
                cursor:pointer; padding:4px 8px; border-radius:6px; }
   #zoomClose:hover { background:#222831; color:#fff; }
 
-  /* margin:auto centres the content but, unlike justify-content:center, still
-     lets you scroll to the edges when it is bigger than the viewport */
-  #zoomScroll { flex:1; overflow:auto; cursor:grab; overscroll-behavior:contain; }
+  /* "safe center" centres the rows when they fit and falls back to start
+     alignment when they do not -- plain centring would push the top and left
+     edges out of reach once you zoom past the viewport. */
+  #zoomScroll { flex:1; overflow:auto; cursor:grab; overscroll-behavior:contain;
+                display:flex; flex-direction:column;
+                justify-content:safe center; align-items:safe center; }
   #zoomScroll.grabbing { cursor:grabbing; }
-  #zoomInner { margin:auto; padding:14px; width:max-content; }
+  #zoomInner { padding:14px; width:max-content; flex:none; }
   .zrow { line-height:0; }
   .zrow + .zrow { margin-top:14px; }
   .zrow img { display:block; height:auto; image-rendering:auto; }
@@ -224,7 +220,7 @@
       <h1 id="q">Which row of images do you prefer?</h1>
       <span class="chip" id="cls"></span>
       <span class="count" id="prog" aria-live="polite"></span>
-      <button class="btn small face" id="backBtn">&larr; Back</button>
+      <button class="btn small" id="backBtn">&larr; Back</button>
     </div>
     <progress id="pbar" value="0" max="1"></progress>
   </div>
@@ -252,12 +248,10 @@
   </div>
 
   <div class="foot">
-    <button class="btn face wide" id="zoomBtn">Inspect at full size (Z)</button>
-    <div class="statusline">
-      <button class="link hide" id="tieBtn">No preference (0)</button>
-      <span class="grow"></span>
-      <span class="mut" id="saveState"></span>
-    </div>
+    <button class="btn" id="zoomBtn">Inspect at full size (Z)</button>
+    <button class="link hide" id="tieBtn">No preference (0)</button>
+    <span class="grow"></span>
+    <span class="mut" id="saveState"></span>
   </div>
 </section>
 
