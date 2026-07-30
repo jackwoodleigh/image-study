@@ -126,6 +126,26 @@
     });
   }
 
+  /*
+   * What should still be queued after a send succeeded.
+   *
+   * Deliberately compares whole rows, not positions and not row_ids:
+   *  - rows added while the request was in flight sit after the sent ones, so
+   *    dropping "the first N" only works if nothing else changed;
+   *  - a participant who steps back and re-answers replaces a queued row in
+   *    place, keeping its row_id but changing its content -- that revision has
+   *    NOT been sent and must survive.
+   */
+  function removeSent(current, sent) {
+    var seen = {};
+    for (var i = 0; i < sent.length; i++) seen[JSON.stringify(sent[i])] = true;
+    var left = [];
+    for (var j = 0; j < current.length; j++) {
+      if (!seen[JSON.stringify(current[j])]) left.push(current[j]);
+    }
+    return left;
+  }
+
   function csvEscape(v) {
     const s = String(v);
     return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -141,6 +161,7 @@
 
   root.Study = {
     rng: rng, shuffle: shuffle, buildTrials: buildTrials, rowUrl: rowUrl,
-    header: header, buildRow: buildRow, toArray: toArray, toCsv: toCsv
+    header: header, buildRow: buildRow, toArray: toArray, toCsv: toCsv,
+    removeSent: removeSent
   };
 })(typeof window !== 'undefined' ? window : globalThis);

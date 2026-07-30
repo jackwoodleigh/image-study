@@ -398,12 +398,17 @@ function flush(done) {
         ? 'HTTP ' + r.status + ' - the Apps Script deployment is not shared with "Anyone"'
         : 'HTTP ' + r.status);
     }
-    var left = queue().slice(pending.length);
-    setQueue(left);
+    setQueue(Study.removeSent(queue(), pending));
     state.sent += pending.length;
     state.lastError = '';
     state.sending = false;
     mark();
+    /*
+     * Answers given while this request was in flight are still queued. Settling
+     * now would tell the participant everything was saved and leave those rows
+     * unsent for good, so keep the waiters and send again instead.
+     */
+    if (queue().length) { flush(); return; }
     settle(true);
   }).catch(function (err) {
     // Surface the reason: a silent "pending" is how a broken endpoint stays
@@ -777,6 +782,10 @@ function init() {
       $('toosmall').classList.add('hide');
       $('trial').classList.remove('hide');
     }
+  });
+  // Last resort: never let a tab close on unsent answers without a word.
+  window.addEventListener('beforeunload', function (e) {
+    if (CONFIG.endpoint && queue().length) { e.preventDefault(); e.returnValue = ''; }
   });
   // Anything still queued from an interrupted session goes out on load.
   flush();

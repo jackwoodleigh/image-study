@@ -109,6 +109,40 @@ for (const [a, b] of M.pairs) {
 }
 console.log('[ok] per-pair totals reconstruct to', M.classes.length, 'per pair:', wins);
 
+/*
+ * Queue bookkeeping after a send. This is where answers were being lost: the
+ * old code dropped "the first N" queued rows, which discards anything answered
+ * or revised while the request was in flight.
+ */
+{
+  const r = i => Study.toArray(M, rows[i]);
+  const sent = [r(0), r(1), r(2)];
+  // the vm returns arrays with a different Array prototype, so compare values
+  const plain = v => JSON.parse(JSON.stringify(v));
+
+  // nothing else happened: the queue empties
+  assert.deepEqual(plain(Study.removeSent([...sent], sent)), []);
+
+  // answered while in flight: the new row survives
+  assert.deepEqual(plain(Study.removeSent([...sent, r(3)], sent)), plain([r(3)]));
+
+  // stepped back and re-answered comparison 2 during the flight: same row_id,
+  // new content. Dropping by count or by row_id would lose this revision.
+  const revised = Study.buildRow(M, {
+    trial: trials[1], slot: rows[1].chosen_position === 'top' ? 'bottom' : 'top',
+    participant: 'w-abc123', trialNumber: 2, timestamp: '2026-07-29 12:30:00',
+    responseMs: 5000, viewport: '1600x900', dpr: 2, userAgent: 'node'
+  });
+  const revisedArr = Study.toArray(M, revised);
+  assert.equal(revisedArr[0], r(1)[0], 'the revision should keep its row_id');
+  assert.deepEqual(plain(Study.removeSent([r(0), revisedArr, r(2)], sent)),
+    plain([revisedArr]), 'the revision must stay queued');
+
+  // resending rows already removed is a no-op
+  assert.deepEqual(plain(Study.removeSent(Study.removeSent([...sent], sent), sent)), []);
+  console.log('[ok] queue keeps rows answered or revised during a send');
+}
+
 // -- CSV text -------------------------------------------------------------
 const csv = Study.toCsv(M, rows);
 const lines = csv.trim().split('\r\n');
