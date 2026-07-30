@@ -257,7 +257,7 @@
 
 <!-- ------------------------------------------------------------------- done -->
 <section id="done" class="card hide">
-  <h1>All done &mdash; thank you!</h1>
+  <h1 id="doneTitle">All done &mdash; thank you!</h1>
   <p class="lede" id="doneMeta"></p>
   <p id="doneWarn" class="hide">
     <strong>Your answers could not be sent automatically.</strong> Please download them and send the
@@ -650,18 +650,28 @@ function wireZoom() {
  * click a retry button, and a single hiccup should not send them away thinking
  * their work was lost.
  */
+var DONE_TITLE = 'All done — thank you!';
+
 function finishSend(attempt) {
   attempt = attempt || 1;
   var MAX = 4;
   if (CONFIG.endpoint) {
-    $('doneMeta').textContent = attempt === 1 ? 'Saving your answers…'
-      : 'Saving your answers… (attempt ' + attempt + ' of ' + MAX + ')';
+    // While the send is in flight the screen says it is saving, not that the
+    // study is finished -- the participant should not leave until it lands.
+    $('doneTitle').textContent = 'Saving your answers';
+    $('doneMeta').textContent = attempt === 1 ? 'one second…'
+      : 'still trying… (attempt ' + attempt + ' of ' + MAX + ')';
+    $('dl').classList.add('hide');
+    $('retry').classList.add('hide');
+    $('doneWarn').classList.add('hide');
   }
   flush(function (ok) {
     if (ok && CONFIG.endpoint) {
+      $('doneTitle').textContent = DONE_TITLE;
       $('doneWarn').classList.add('hide');
       $('doneWhy').textContent = '';
       $('retry').classList.add('hide');
+      $('dl').classList.remove('hide');
       $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
       return;
     }
@@ -669,9 +679,11 @@ function finishSend(attempt) {
       setTimeout(function () { finishSend(attempt + 1); }, 700 * attempt);
       return;
     }
+    $('doneTitle').textContent = DONE_TITLE;
     $('doneWarn').classList.remove('hide');
     $('doneWhy').textContent = state.lastError ? 'Reason: ' + state.lastError : '';
     $('retry').classList.remove('hide');
+    $('dl').classList.remove('hide');
     $('doneMeta').textContent = 'You can close this tab now.';
   });
 }
