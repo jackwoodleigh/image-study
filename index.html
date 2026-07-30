@@ -121,12 +121,46 @@
 
   /* ---------- zoom ---------- */
   #zoom { position:fixed; inset:0; z-index:100; background:#07080a; display:flex; flex-direction:column; }
-  #zoomScroll { flex:1; overflow:auto; display:flex; flex-direction:column; justify-content:center; gap:12px; }
-  #zoomScroll img { display:block; }
-  #zoomBar { display:flex; align-items:center; gap:10px; padding:12px 18px;
-             background:#101216; border-top:1px solid #23262d; color:#e8eaee; }
-  #zoomBar .grow { flex:1; }
-  #zoomBar .mut { color:#98a0ad; }
+  #zoomTop, #zoomBar { display:flex; align-items:center; gap:10px; padding:10px 16px;
+                       background:#101216; color:#e8eaee; flex:none; }
+  #zoomTop { border-bottom:1px solid #23262d; }
+  #zoomBar { border-top:1px solid #23262d; }
+  #zoomTop .grow, #zoomBar .grow { flex:1; }
+  #zoomTop .mut, #zoomBar .mut { color:#98a0ad; }
+  #zoomTop kbd { background:#1b1f26; border-color:#31363f; color:#dfe3ea; }
+  .levels { display:flex; gap:4px; }
+  .levels button {
+    padding:5px 12px; border:1px solid #31363f; background:#181c22; color:#c9cfd8;
+    border-radius:7px; cursor:pointer; font-weight:600; font-size:.88rem;
+  }
+  .levels button:hover { background:#222831; }
+  .levels button[aria-pressed="true"] { background:var(--acc); border-color:var(--acc); color:#fff; }
+  #zoomClose { background:none; border:0; color:#c9cfd8; font-size:1.25rem; line-height:1;
+               cursor:pointer; padding:4px 8px; border-radius:6px; }
+  #zoomClose:hover { background:#222831; color:#fff; }
+
+  /* margin:auto centres the content but, unlike justify-content:center, still
+     lets you scroll to the edges when it is bigger than the viewport */
+  #zoomScroll { flex:1; overflow:auto; cursor:grab; overscroll-behavior:contain; }
+  #zoomScroll.grabbing { cursor:grabbing; }
+  #zoomInner { margin:auto; padding:14px; width:max-content; }
+  .zrow { line-height:0; }
+  .zrow + .zrow { margin-top:14px; }
+  .zrow img { display:block; height:auto; image-rendering:auto; }
+  /* A zero-height sticky strip: the label stays pinned to the top-left of the
+     viewport while its row pans underneath, so you always know which row you
+     are looking at however far you have zoomed in. */
+  /* width:max-content matters: a sticky box only slides where it has slack, and
+     a full-width bar has none horizontally, so `left` would be ignored. */
+  .ztagbar { position:sticky; left:0; top:0; width:max-content; height:0; z-index:2;
+             pointer-events:none; }
+  .ztag {
+    display:inline-block; margin:10px 0 0 10px; padding:4px 10px; border-radius:6px;
+    background:rgba(7,8,10,.8); color:#fff; letter-spacing:.09em;
+    /* explicit, not the font shorthand: "font: ... inherit" is invalid and the
+       whole declaration gets dropped, leaving line-height:0 from .zrow */
+    font-weight:700; font-size:.72rem; line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -228,15 +262,36 @@
 
 <!-- ------------------------------------------------------------------- zoom -->
 <div id="zoom" class="hide">
+  <div id="zoomTop">
+    <strong>Close-up</strong>
+    <span class="levels" id="levels">
+      <button data-z="fit">Fit</button>
+      <button data-z="1">1&times;</button>
+      <button data-z="2">2&times;</button>
+      <button data-z="4">4&times;</button>
+    </span>
+    <span class="grow"></span>
+    <span class="mut">drag to move &nbsp;·&nbsp; wheel scrolls sideways &nbsp;·&nbsp;
+      <kbd>+</kbd> <kbd>-</kbd> zoom &nbsp;·&nbsp; <kbd>F</kbd> fit</span>
+    <button id="zoomClose" aria-label="Close close-up" title="Close (Esc)">&#10005;</button>
+  </div>
   <div id="zoomScroll">
-    <img id="zTop" alt="First row at full size">
-    <img id="zBot" alt="Second row at full size">
+    <div id="zoomInner">
+      <div class="zrow">
+        <div class="ztagbar"><span class="ztag">TOP &mdash; press 1</span></div>
+        <img id="zTop" alt="First row, magnified" draggable="false">
+      </div>
+      <div class="zrow">
+        <div class="ztagbar"><span class="ztag">BOTTOM &mdash; press 2</span></div>
+        <img id="zBot" alt="Second row, magnified" draggable="false">
+      </div>
+    </div>
   </div>
   <div id="zoomBar">
     <button class="btn" data-slot="top">Prefer top (1)</button>
     <button class="btn" data-slot="bottom">Prefer bottom (2)</button>
     <span class="grow"></span>
-    <span class="mut">scroll sideways to compare &nbsp;·&nbsp; <kbd>Esc</kbd> or <kbd>Z</kbd> closes</span>
+    <span class="mut"><kbd>Esc</kbd> or <kbd>Z</kbd> closes</span>
   </div>
 </div>
 
@@ -428,16 +483,121 @@ function choose(slot) {
 }
 
 /* -------------------------------------------------------------------- zoom */
+/*
+ * A row is 2560 px wide, so on a wide screen "actual size" is barely bigger
+ * than the fitted view -- the point of the close-up is being able to go past
+ * that. Both rows live in one scroll container so they pan together and the
+ * same part of each stays lined up.
+ */
+var LEVELS = ['fit', 1, 2, 4];
+var zoomLevel = null;             // remembered between trials
+
+function fitScale() {
+  var nat = $('zTop').naturalWidth || 2560;
+  return ($('zoomScroll').clientWidth - 28) / nat;
+}
+
+/* Default to whichever step actually magnifies on this screen. */
+function defaultLevel() {
+  return fitScale() < 0.9 ? 1 : 2;
+}
+
+function setZoom(z, keepCentre) {
+  var sc = $('zoomScroll');
+  var nat = $('zTop').naturalWidth || 2560;
+  // remember where we were looking, as a fraction of the whole row
+  var fx = 0.5, fy = 0.5;
+  if (keepCentre !== false && sc.scrollWidth > sc.clientWidth) {
+    fx = (sc.scrollLeft + sc.clientWidth / 2) / sc.scrollWidth;
+  }
+  if (keepCentre !== false && sc.scrollHeight > sc.clientHeight) {
+    fy = (sc.scrollTop + sc.clientHeight / 2) / sc.scrollHeight;
+  }
+
+  zoomLevel = z;
+  var w = z === 'fit' ? Math.max(240, sc.clientWidth - 28) : Math.round(nat * z);
+  $('zTop').style.width = w + 'px';
+  $('zBot').style.width = w + 'px';
+
+  Array.prototype.forEach.call($('levels').children, function (b) {
+    b.setAttribute('aria-pressed', String(b.getAttribute('data-z') === String(z)));
+  });
+  // restore the view centre at the new scale
+  sc.scrollLeft = Math.max(0, fx * sc.scrollWidth - sc.clientWidth / 2);
+  sc.scrollTop = Math.max(0, fy * sc.scrollHeight - sc.clientHeight / 2);
+}
+
+function stepZoom(dir) {
+  var i = LEVELS.indexOf(zoomLevel);
+  if (i < 0) i = LEVELS.indexOf(1);
+  setZoom(LEVELS[Math.min(LEVELS.length - 1, Math.max(0, i + dir))]);
+}
+
 function openZoom() {
   if (state.i >= state.trials.length) return;
   var t = state.trials[state.i];
-  $('zTop').src = Study.rowUrl(M, t.top, t.ci);
-  $('zBot').src = Study.rowUrl(M, t.bottom, t.ci);
+  var top = $('zTop'), bot = $('zBot');
+  top.src = Study.rowUrl(M, t.top, t.ci);
+  bot.src = Study.rowUrl(M, t.bottom, t.ci);
   $('zoom').classList.remove('hide');
+  document.body.style.overflow = 'hidden';
+  // naturalWidth is only known once the image is decoded
+  var start = function () { setZoom(zoomLevel || defaultLevel(), false); };
+  if (top.complete && top.naturalWidth) start(); else top.onload = start;
 }
-function closeZoom() { $('zoom').classList.add('hide'); }
+
+function closeZoom() {
+  $('zoom').classList.add('hide');
+  document.body.style.overflow = '';
+}
+
 function toggleZoom() {
   if ($('zoom').classList.contains('hide')) openZoom(); else closeZoom();
+}
+
+function wireZoom() {
+  var sc = $('zoomScroll');
+
+  Array.prototype.forEach.call($('levels').children, function (b) {
+    b.addEventListener('click', function () {
+      var v = b.getAttribute('data-z');
+      setZoom(v === 'fit' ? 'fit' : Number(v));
+    });
+  });
+  $('zoomClose').addEventListener('click', closeZoom);
+
+  // wheel pans sideways (these images are wide); shift = vertical, ctrl = zoom
+  sc.addEventListener('wheel', function (e) {
+    if (e.ctrlKey) {
+      stepZoom(e.deltaY < 0 ? 1 : -1);
+    } else if (e.shiftKey) {
+      sc.scrollTop += e.deltaY;
+    } else {
+      sc.scrollLeft += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  // drag to pan
+  var drag = null;
+  sc.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop };
+    sc.classList.add('grabbing');
+    sc.setPointerCapture(e.pointerId);
+  });
+  sc.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    sc.scrollLeft = drag.l - (e.clientX - drag.x);
+    sc.scrollTop = drag.t - (e.clientY - drag.y);
+  });
+  function endDrag() { drag = null; sc.classList.remove('grabbing'); }
+  sc.addEventListener('pointerup', endDrag);
+  sc.addEventListener('pointercancel', endDrag);
+
+  window.addEventListener('resize', function () {
+    if (!$('zoom').classList.contains('hide') && zoomLevel === 'fit') setZoom('fit', false);
+  });
 }
 
 /* -------------------------------------------------------------------- done */
@@ -532,13 +692,26 @@ function init() {
   Array.prototype.forEach.call(document.querySelectorAll('[data-slot]'), function (el) {
     el.addEventListener('click', function () { choose(el.getAttribute('data-slot')); });
   });
+  wireZoom();
   document.addEventListener('keydown', function (e) {
-    if ($('trial').classList.contains('hide') && $('zoom').classList.contains('hide')) return;
+    var zoomOpen = !$('zoom').classList.contains('hide');
+    if ($('trial').classList.contains('hide') && !zoomOpen) return;
+    if (e.key === 'z' || e.key === 'Z') { toggleZoom(); return; }
+    if (e.key === 'Escape') { closeZoom(); return; }
+    if (zoomOpen) {
+      // inside the close-up the arrows move the image instead of answering
+      var sc = $('zoomScroll'), step = e.shiftKey ? 400 : 120;
+      if (e.key === 'ArrowLeft') { sc.scrollLeft -= step; e.preventDefault(); return; }
+      if (e.key === 'ArrowRight') { sc.scrollLeft += step; e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { sc.scrollTop -= step; e.preventDefault(); return; }
+      if (e.key === 'ArrowDown') { sc.scrollTop += step; e.preventDefault(); return; }
+      if (e.key === '+' || e.key === '=') { stepZoom(1); e.preventDefault(); return; }
+      if (e.key === '-' || e.key === '_') { stepZoom(-1); e.preventDefault(); return; }
+      if (e.key === 'f' || e.key === 'F') { setZoom('fit'); e.preventDefault(); return; }
+    }
     if (e.key === '1' || e.key === 'ArrowUp') { choose('top'); e.preventDefault(); }
     else if (e.key === '2' || e.key === 'ArrowDown') { choose('bottom'); e.preventDefault(); }
     else if (e.key === '0' && CONFIG.allowNoPreference) choose(null);
-    else if (e.key === 'z' || e.key === 'Z') toggleZoom();
-    else if (e.key === 'Escape') closeZoom();
   });
   window.addEventListener('resize', function () {
     if (!$('trial').classList.contains('hide') && !gateWidth()) {
