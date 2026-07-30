@@ -69,6 +69,7 @@
   .btn:active { transform:translateY(1px); }
   .btn.ghost { background:transparent; color:var(--acc); }
   .btn.quiet { background:transparent; color:var(--mut); border-color:var(--line); }
+  .btn.small { padding:7px 15px; font-size:.9rem; border-radius:8px; }
   .link { background:none; border:none; color:var(--acc); cursor:pointer; padding:6px 2px; font:inherit; }
   .link:hover { text-decoration:underline; }
   :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:6px; }
@@ -216,6 +217,7 @@
       <h1 id="q">Which row of images do you prefer?</h1>
       <span class="chip" id="cls"></span>
       <span class="count" id="prog" aria-live="polite"></span>
+      <button class="btn small" id="backBtn">&larr; Back</button>
     </div>
     <progress id="pbar" value="0" max="1"></progress>
   </div>
@@ -243,8 +245,7 @@
   </div>
 
   <div class="foot">
-    <button class="link" id="backBtn">&larr; Back</button>
-    <button class="link" id="zoomBtn">Inspect at full size (Z)</button>
+    <button class="btn small" id="zoomBtn">Inspect at full size (Z)</button>
     <button class="link hide" id="tieBtn">No preference (0)</button>
     <span class="grow"></span>
     <span class="mut" id="saveState"></span>
@@ -263,7 +264,6 @@
   <div class="actions">
     <button class="btn ghost hide" id="dl">Download my answers</button>
     <button class="btn quiet hide" id="retry">Try sending again</button>
-    <button class="link" id="backFromDone">&larr; Change my last answer</button>
   </div>
   <p class="mut" id="doneMsg"></p>
 </section>
@@ -518,8 +518,6 @@ function goBack() {
   if (state.locked || state.i <= 0) return;
   state.i--;
   closeZoom();
-  $('done').classList.add('hide');
-  $('trial').classList.remove('hide');
   show();
 }
 
@@ -730,7 +728,6 @@ function init() {
   $('retry').onclick = function () { finishSend(1); };
   $('zoomBtn').onclick = toggleZoom;
   $('backBtn').onclick = goBack;
-  $('backFromDone').onclick = goBack;
   $('tieBtn').onclick = function () { choose(null); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-slot]'), function (el) {
     el.addEventListener('click', function () { choose(el.getAttribute('data-slot')); });
