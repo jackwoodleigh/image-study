@@ -201,6 +201,23 @@ lay.boxes.forEach(b => {
   assert.equal(b.cols, cols.length + 1);
 });
 assert.equal(lay.rateCells.length, (cols.length * (cols.length - 1)) / 2);
+
+// The rate matrix is formatted as one block, so the arrays must match its shape
+// exactly or setNumberFormats/setFontColors will throw in the Sheet.
+const rm = lay.rateMatrix;
+assert.equal(rm.rows, cols.length);
+assert.equal(rm.cols, cols.length);
+[['formats', rm.formats], ['colors', rm.colors], ['weights', rm.weights]].forEach(
+  ([name, grid]) => {
+    assert.equal(grid.length, rm.rows, `${name} has the wrong row count`);
+    grid.forEach(row => assert.equal(row.length, rm.cols, `${name} row wrong width`));
+  });
+// every filled cell in the block lines up with a rateCell entry
+const live = rm.formats.flat().filter(f => f === '0.000').length;
+assert.equal(live, lay.rateCells.length, 'formatted cells do not match the filled ones');
+// the row-model header sits directly above the block
+assert.deepEqual(at(rm.top - 1), [''].concat(cols));
+console.log('[ok] rate matrix formats as one block,', live, 'filled cells');
 // per-participant rates must be between 0 and 1
 stats.participants.forEach(P => {
   cols.forEach(c => {

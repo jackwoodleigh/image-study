@@ -140,6 +140,27 @@ the statistics use). Rewriting the Summary leaves that signature untouched, so
 the follow-up event stops immediately, while a genuine edit or deletion changes
 it and rebuilds. `summary_selftest.mjs` asserts exactly that property.
 
+### How quickly it updates
+
+A few seconds, and that is mostly Google's, not ours:
+
+- **Change trigger latency.** Installable triggers are queued by Apps Script, not
+  run inline. A few seconds is normal; occasionally longer when Google is busy.
+  Nothing in the script can shorten this.
+- **The rebuild itself** reads the responses once and writes the Summary in
+  batched calls (whole blocks of number formats and colours at a time, one call
+  for all the column widths). Expect well under a second at study scale.
+- **A one-minute backstop** catches a missed change event. A run with nothing new
+  costs one read and a hash, then stops on the signature check.
+
+With auto-update **off** it is slower by design: there is no trigger, so the
+rebuild happens inside the participant's own request and is throttled to one
+every 15 seconds to keep the endpoint responsive. If the Summary feels sluggish,
+check that **Study → Turn ON auto-update** has actually been run.
+
+**Study → Rebuild summary now** always rebuilds immediately, ignoring both the
+signature check and the throttle.
+
 The maths is a port of `preference_study.py` and is tested against it:
 `node web/summary_selftest.mjs` feeds `results/all_trials.csv` through the Apps
 Script functions and asserts the ranking, matrix and p-values come out identical

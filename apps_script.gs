@@ -17,7 +17,12 @@
  */
 
 var SUMMARY_NAME = 'Summary';
-var REBUILD_EVERY_MS = 60 * 1000;
+/*
+ * Only used when auto-update is OFF. With the change trigger installed, an
+ * incoming response rebuilds through the trigger instead, which keeps the
+ * rebuild out of the participant's request and off this throttle entirely.
+ */
+var REBUILD_EVERY_MS = 15 * 1000;
 
 /* ======================================================================= */
 /* collection                                                              */
@@ -59,7 +64,13 @@ function doPost(e) {
         added++;
       }
     }
-    if (added || updated) maybeRebuild();
+    /*
+     * Do not rebuild the Summary here when auto-update is on: writing to this
+     * sheet fires the change trigger, which rebuilds a moment later outside this
+     * request. Rebuilding inline would make every participant wait for it and
+     * would be throttled on top of that.
+     */
+    if ((added || updated) && !autoUpdateFlag()) maybeRebuild();
     return json({ ok: true, added: added, updated: updated });
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -132,9 +143,10 @@ function installTriggers() {
   removeTriggers();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss).onChange().create();
-  // Backstop, in case a change event is ever missed: cheap because it skips
-  // the rebuild when the data has not actually changed.
-  ScriptApp.newTrigger('onSheetTimer').timeBased().everyMinutes(5).create();
+  // Backstop for a missed change event. One minute is affordable because a run
+  // with no new data costs one read and a hash, then stops.
+  ScriptApp.newTrigger('onSheetTimer').timeBased().everyMinutes(1).create();
+  PropertiesService.getScriptProperties().setProperty('autoUpdate', '1');
   buildSummary(true);
   toast('Auto-update is ON: the Summary now follows every edit, deletion and ' +
         'incoming response.');
@@ -145,6 +157,16 @@ function removeTriggers() {
   for (var i = 0; i < all.length; i++) {
     var fn = all[i].getHandlerFunction();
     if (fn === 'onSheetChange' || fn === 'onSheetTimer') ScriptApp.deleteTrigger(all[i]);
+  }
+  PropertiesService.getScriptProperties().deleteProperty('autoUpdate');
+}
+
+/* Cheap check used on the hot path, instead of listing project triggers. */
+function autoUpdateFlag() {
+  try {
+    return PropertiesService.getScriptProperties().getProperty('autoUpdate') === '1';
+  } catch (err) {
+    return false;
   }
 }
 
@@ -473,15 +495,25 @@ function summaryLayout(stats, meta) {
   var rStart = put([''].concat(cols));
   bold.push(rStart);
   var rateCells = [];
+  var rateFormats = [], rateColors = [], rateWeights = [];
   cols.forEach(function (rm, i) {
     var line = [rm];
+    var fmts = [], colours = [], weights = [];
     cols.forEach(function (cm, j) {
       var cell = matrixCell(stats, rm, cm);
-      line.push(cell && cell.decided ? cell.rate : '');
-      if (cell && cell.decided) {
-        rateCells.push({ row: rStart + i + 1, col: j + 2, rate: cell.rate });
-      }
+      var live = cell && cell.decided;
+      line.push(live ? cell.rate : '');
+      // Collected as whole rows so the writer can format the block in one call
+      // per attribute rather than three calls per cell.
+      fmts.push(live ? '0.000' : '@');
+      colours.push(!live ? null : cell.rate > 0.5 ? '#0f7a4d'
+                                : cell.rate < 0.5 ? '#8b93a1' : null);
+      weights.push(live && cell.rate > 0.5 ? 'bold' : 'normal');
+      if (live) rateCells.push({ row: rStart + i + 1, col: j + 2, rate: cell.rate });
     });
+    rateFormats.push(fmts);
+    rateColors.push(colours);
+    rateWeights.push(weights);
     put(line);
   });
   boxes.push({ top: rStart, left: 1, rows: cols.length + 1, cols: cols.length + 1 });
@@ -507,7 +539,9 @@ function summaryLayout(stats, meta) {
     // (header row, number of data rows, 1-based column of the value to format)
     rank: { header: rankHeader, rows: stats.ranking.length, rateCol: 5 },
     h2h: { header: h2hHeader, rows: stats.h2h.length, rateCol: 4, pCol: 6, width: 7 },
-    part: { header: partHeader, rows: stats.participants.length, firstRateCol: 4 }
+    part: { header: partHeader, rows: stats.participants.length, firstRateCol: 4 },
+    rateMatrix: { top: rStart + 1, left: 2, rows: cols.length, cols: cols.length,
+                  formats: rateFormats, colors: rateColors, weights: rateWeights }
   };
 }
 
@@ -607,13 +641,15 @@ function writeSummary(ss, values) {
         .setFontColor('#0f7a4d').setFontWeight('bold');
     }
   });
-  // rate matrix: colour by who was preferred
-  lay.rateCells.forEach(function (c) {
-    var r = out.getRange(c.row, c.col);
-    r.setNumberFormat('0.000');
-    if (c.rate > 0.5) r.setFontColor('#0f7a4d').setFontWeight('bold');
-    else if (c.rate < 0.5) r.setFontColor('#8b93a1');
-  });
+  // rate matrix: colour by who was preferred -- one call per attribute for the
+  // whole block instead of three per cell
+  var rm = lay.rateMatrix;
+  if (rm.rows) {
+    out.getRange(rm.top, rm.left, rm.rows, rm.cols)
+      .setNumberFormats(rm.formats)
+      .setFontColors(rm.colors)
+      .setFontWeights(rm.weights);
+  }
   // per-participant win rates
   if (lay.part.rows) {
     out.getRange(lay.part.header + 1, lay.part.firstRateCol, lay.part.rows, lay.cols)
@@ -622,6 +658,6 @@ function writeSummary(ss, values) {
   }
 
   out.setColumnWidth(1, 190);
-  for (var c2 = 2; c2 <= width; c2++) out.setColumnWidth(c2, 120);
+  if (width > 1) out.setColumnWidths(2, width - 1, 120);   // one call, not one per column
   out.setFrozenRows(1);
 }
