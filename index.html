@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Image preference study</title>
+<style>
+  :root { --bg:#f4f4f5; --fg:#18181b; --mut:#6b7280; --line:#d4d4d8; --acc:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#18181b; --fg:#f4f4f5; --mut:#a1a1aa; --line:#3f3f46; --acc:#60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  .wrap { max-width:min(2560px, 98vw); margin:0 auto; padding:14px 16px 24px; }
+  .card { max-width:760px; margin:6vh auto; padding:28px 32px; background:color-mix(in srgb, var(--bg) 88%, #fff);
+          border:1px solid var(--line); border-radius:12px; }
+  h1 { font-size:1.5rem; margin:0 0 12px; }
+  h2 { font-size:1.05rem; margin:22px 0 6px; }
+  p { margin:10px 0; }
+  ul { margin:10px 0; padding-left:22px; }
+  .mut { color:var(--mut); font-size:.9em; }
+  .warn { color:#b91c1c; font-size:.9em; }
+  @media (prefers-color-scheme: dark) { .warn { color:#f87171; } }
+  button { font:inherit; }
+  .btn { display:inline-block; padding:11px 20px; border:1px solid var(--acc); border-radius:8px;
+         background:var(--acc); color:#fff; font-weight:600; cursor:pointer; }
+  .btn.ghost { background:transparent; color:var(--acc); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .hide { display:none !important; }
+
+  /* trial screen */
+  .bar { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  .bar h1 { font-size:1.15rem; margin:0; }
+  .bar .grow { flex:1; }
+  #cls { text-align:center; font-weight:700; margin:2px 0 6px; }
+  progress { width:100%; height:6px; }
+  .rowbox { border:2px solid var(--line); border-radius:6px; overflow:hidden; background:#111;
+            line-height:0; cursor:pointer; }
+  .rowbox img { width:100%; height:auto; display:block; }
+  .pick { width:100%; margin:6px 0 14px; padding:10px; border:1px solid var(--line);
+          border-radius:8px; background:transparent; color:var(--fg); font-weight:600; cursor:pointer; }
+  .pick:hover, .rowbox:hover { border-color:var(--acc); }
+  .foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .foot .grow { flex:1; }
+  .link { background:none; border:none; color:var(--acc); cursor:pointer; padding:4px; font:inherit; }
+
+  /* zoom overlay */
+  #zoom { position:fixed; inset:0; background:#000; z-index:50; display:flex; flex-direction:column; }
+  #zoomScroll { flex:1; overflow:auto; display:flex; flex-direction:column; justify-content:center; }
+  #zoomScroll img { display:block; image-rendering:auto; }
+  #zoomScroll img + img { margin-top:10px; }
+  #zoomBar { display:flex; gap:10px; padding:10px; background:#111; color:#eee; align-items:center; }
+</style>
+</head>
+<body>
+
+<!-- ------------------------------------------------------------------ intro -->
+<section id="intro" class="card">
+  <h1>Which generated image do you prefer?</h1>
+  <p>Thank you for helping. This takes about <strong>4 minutes</strong> and is completely anonymous.</p>
+  <h2>What you will do</h2>
+  <p>You will see <strong>two rows of computer-generated images</strong>, one above the other. Both rows
+     show the same kind of thing (both dogs, both palaces, and so on) but they were made by two
+     different systems.</p>
+  <p>Pick the row you think looks <strong>better overall</strong> &mdash; more realistic, more
+     convincing, fewer oddities. There is no right answer; go with your first impression.</p>
+  <ul>
+    <li>Click a row, or its button, or press <kbd>1</kbd>/<kbd>2</kbd> (or <kbd>&uarr;</kbd>/<kbd>&darr;</kbd>).</li>
+    <li>Press <kbd>Z</kbd> to see both rows at full size if you want a closer look.</li>
+    <li><strong>Make your browser window as wide as you can</strong> &mdash; the images are wide.</li>
+  </ul>
+  <h2>Privacy</h2>
+  <p class="mut">No personal data is collected: no name, no email, no login. We store only your choices,
+     how long each took, and your screen size, under a random ID.</p>
+  <p><button class="btn" id="start">Start</button></p>
+  <p class="mut" id="introMeta"></p>
+</section>
+
+<!-- ------------------------------------------------------------- too narrow -->
+<section id="toosmall" class="card hide">
+  <h1>Please use a wider window</h1>
+  <p>The images in this study are very wide, and on a narrow screen they shrink so much that the
+     comparison stops being meaningful.</p>
+  <p><strong>Please open this link on a laptop or desktop</strong>, and widen the window
+     (or rotate a tablet to landscape).</p>
+  <p class="mut">Needed: about <span id="needW">1100</span> px of width. Yours: <span id="haveW"></span> px.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ trial -->
+<section id="trial" class="wrap hide">
+  <div class="bar">
+    <h1 id="q">Which row of images do you prefer?</h1>
+    <span class="grow"></span>
+    <span class="mut" id="prog"></span>
+  </div>
+  <div id="cls"></div>
+  <progress id="pbar" value="0" max="1"></progress>
+
+  <div class="rowbox" data-slot="top"><img id="imgTop" alt="row of generated images (option 1)"></div>
+  <button class="pick" data-slot="top">Prefer this row &nbsp;(1 / &uarr;)</button>
+
+  <div class="rowbox" data-slot="bottom"><img id="imgBot" alt="row of generated images (option 2)"></div>
+  <button class="pick" data-slot="bottom">Prefer this row &nbsp;(2 / &darr;)</button>
+
+  <div class="foot">
+    <button class="link" id="zoomBtn">Zoom to full size (Z)</button>
+    <button class="link hide" id="tieBtn">No preference (0)</button>
+    <span class="grow"></span>
+    <span class="mut" id="saveState"></span>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------- done -->
+<section id="done" class="card hide">
+  <h1>All done &mdash; thank you!</h1>
+  <p id="doneMsg"></p>
+  <p id="doneWarn" class="hide">
+    <strong>Your answers could not be sent automatically.</strong> Please click below and email
+    the file to the researcher so your work is not wasted.
+    <br><span class="warn" id="doneWhy"></span>
+  </p>
+  <p>
+    <button class="btn ghost hide" id="dl">Download my answers</button>
+    <button class="btn ghost hide" id="retry">Try sending again</button>
+  </p>
+  <p class="mut" id="doneMeta"></p>
+</section>
+
+<!-- ------------------------------------------------------------------- zoom -->
+<div id="zoom" class="hide">
+  <div id="zoomScroll">
+    <img id="zTop" alt="option 1 at full size">
+    <img id="zBot" alt="option 2 at full size">
+  </div>
+  <div id="zoomBar">
+    <button class="btn" data-slot="top">Prefer TOP (1)</button>
+    <button class="btn" data-slot="bottom">Prefer BOTTOM (2)</button>
+    <span class="grow" style="flex:1"></span>
+    <span class="mut">scroll sideways to compare &nbsp;·&nbsp; Esc or Z closes</span>
+  </div>
+</div>
+
+<script src="manifest.js"></script>
+<script src="study.js"></script>
+<script>
+'use strict';
+/* ------------------------------------------------------------------ config */
+var CONFIG = {
+  // Paste the Google Apps Script /exec URL here (see DEPLOY.md).
+  // Leave empty to test locally: answers are then only downloadable.
+  endpoint: 'https://script.google.com/macros/s/AKfycbxzpbWNMdsXRXGo2J0qrPNm8yGGplXcCR2lOvL26z-4TzTMtx4ihkxQ3WY7SowZLBBv9w/exec',
+  minWidth: 1100,          // refuse narrower windows -- see DEPLOY.md
+  showClassLabel: true,
+  allowNoPreference: false
+};
+
+/* ------------------------------------------------------------------- state */
+var M = window.STUDY_MANIFEST;
+var $ = function (id) { return document.getElementById(id); };
+var state = { trials: [], i: 0, rows: [], pid: '', t0: 0, sending: false, sent: 0,
+              lastError: '' };
+
+function participantId() {
+  var q = new URLSearchParams(location.search);
+  var given = q.get('pid') || q.get('PROLIFIC_PID') || q.get('id');
+  if (given) return given.slice(0, 64);
+  var k = 'study_pid';
+  var got = null;
+  try { got = localStorage.getItem(k); } catch (e) {}
+  if (!got) {
+    got = 'w-' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+    try { localStorage.setItem(k, got); } catch (e) {}
+  }
+  return got;
+}
+
+function viewport() { return window.innerWidth + 'x' + window.innerHeight; }
+
+/* ------------------------------------------------------- sending / storage */
+var QKEY = 'study_queue';
+function queue() {
+  try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch (e) { return []; }
+}
+function setQueue(q) {
+  try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch (e) {}
+}
+function enqueue(row) {
+  var q = queue();
+  q.push(Study.toArray(M, row));
+  setQueue(q);
+}
+
+/* One POST carries whatever is still queued. row_id makes retries idempotent,
+   so a request that silently succeeded cannot duplicate rows. */
+function flush(done) {
+  var pending = queue();
+  if (!CONFIG.endpoint || !pending.length || state.sending) {
+    if (done) done(!pending.length);
+    return;
+  }
+  state.sending = true;
+  fetch(CONFIG.endpoint, {
+    method: 'POST',
+    // text/plain dodges the CORS preflight that Apps Script cannot answer
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ header: Study.header(M), rows: pending })
+  }).then(function (r) {
+    if (!r.ok) {
+      throw new Error(r.status === 401 || r.status === 403
+        ? 'HTTP ' + r.status + ' - the Apps Script deployment is not shared with "Anyone"'
+        : 'HTTP ' + r.status);
+    }
+    var left = queue().slice(pending.length);
+    setQueue(left);
+    state.sent += pending.length;
+    state.lastError = '';
+    state.sending = false;
+    mark();
+    if (done) done(true);
+  }).catch(function (err) {
+    // Surface the reason: a silent "pending" is how a broken endpoint stays
+    // unnoticed until the very end of a session.
+    state.lastError = String((err && err.message) || err || 'network error');
+    state.sending = false;
+    mark();
+    if (done) done(false);
+  });
+}
+
+function mark() {
+  var n = queue().length;
+  var el = $('saveState');
+  if (!CONFIG.endpoint) {
+    el.className = 'mut';
+    el.textContent = 'local test mode - answers are not being sent';
+  } else if (n && state.lastError) {
+    el.className = 'warn';
+    el.textContent = 'NOT saved (' + n + ' pending): ' + state.lastError;
+  } else if (n) {
+    el.className = 'mut';
+    el.textContent = 'saving… (' + n + ' pending)';
+  } else {
+    el.className = 'mut';
+    // Before the first response there is nothing to have saved yet.
+    el.textContent = state.sent ? 'answers saved' : 'answers are saved as you go';
+  }
+}
+
+/* ------------------------------------------------------------------ trials */
+function preload(i) {
+  [i, i + 1].forEach(function (k) {
+    var t = state.trials[k];
+    if (!t) return;
+    [t.top, t.bottom].forEach(function (mi) {
+      var im = new Image();
+      im.src = Study.rowUrl(M, mi, t.ci);
+    });
+  });
+}
+
+function show() {
+  if (state.i >= state.trials.length) return finish();
+  var t = state.trials[state.i];
+  var cls = M.classes[t.ci];
+  $('imgTop').src = Study.rowUrl(M, t.top, t.ci);
+  $('imgBot').src = Study.rowUrl(M, t.bottom, t.ci);
+  $('prog').textContent = 'Comparison ' + (state.i + 1) + ' of ' + state.trials.length;
+  $('pbar').value = state.i;
+  $('cls').textContent = CONFIG.showClassLabel && cls.label ? 'both rows show: ' + cls.label : '';
+  state.t0 = performance.now();
+  preload(state.i + 1);
+  mark();
+}
+
+function choose(slot) {
+  if ($('trial').classList.contains('hide')) return;
+  if (state.i >= state.trials.length) return;
+  if (!slot && !CONFIG.allowNoPreference) return;
+  var row = Study.buildRow(M, {
+    trial: state.trials[state.i],
+    slot: slot,
+    participant: state.pid,
+    trialNumber: state.i + 1,
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    responseMs: Math.round(performance.now() - state.t0),
+    viewport: viewport(),
+    dpr: window.devicePixelRatio || 1,
+    userAgent: navigator.userAgent
+  });
+  state.rows.push(row);
+  enqueue(row);
+  closeZoom();
+  state.i++;
+  flush();
+  show();
+}
+
+/* -------------------------------------------------------------------- zoom */
+function openZoom() {
+  if (state.i >= state.trials.length) return;
+  var t = state.trials[state.i];
+  $('zTop').src = Study.rowUrl(M, t.top, t.ci);
+  $('zBot').src = Study.rowUrl(M, t.bottom, t.ci);
+  $('zoom').classList.remove('hide');
+}
+function closeZoom() { $('zoom').classList.add('hide'); }
+function toggleZoom() {
+  if ($('zoom').classList.contains('hide')) openZoom(); else closeZoom();
+}
+
+/* -------------------------------------------------------------------- done */
+function finish() {
+  $('trial').classList.add('hide');
+  $('done').classList.remove('hide');
+  $('doneMsg').textContent = state.rows.length + ' comparisons recorded. Your ID is ' +
+    state.pid + '.';
+  $('doneMeta').textContent = 'You can close this tab now.';
+  $('dl').classList.remove('hide');
+  flush(function (ok) {
+    if (ok && CONFIG.endpoint) {
+      $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
+      return;
+    }
+    $('doneWarn').classList.remove('hide');
+    $('doneWhy').textContent = state.lastError ? 'Reason: ' + state.lastError : '';
+    $('retry').classList.remove('hide');
+  });
+}
+
+function download() {
+  var blob = new Blob([Study.toCsv(M, state.rows)], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'answers_' + state.pid + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ------------------------------------------------------------------- wiring */
+function gateWidth() {
+  var ok = window.innerWidth >= CONFIG.minWidth;
+  $('needW').textContent = CONFIG.minWidth;
+  $('haveW').textContent = window.innerWidth;
+  return ok;
+}
+
+function begin() {
+  if (!gateWidth()) {
+    $('intro').classList.add('hide');
+    $('toosmall').classList.remove('hide');
+    return;
+  }
+  $('toosmall').classList.add('hide');
+  $('intro').classList.add('hide');
+  $('trial').classList.remove('hide');
+  $('pbar').max = state.trials.length;
+  show();
+}
+
+function init() {
+  if (!M || !M.classes || !M.classes.length) {
+    document.body.innerHTML = '<div class="card"><h1>Not built yet</h1>' +
+      '<p>Run <code>python make_web.py</code> to generate manifest.js and the row images.</p></div>';
+    return;
+  }
+  state.pid = participantId();
+  state.trials = Study.buildTrials(M, state.pid);
+  $('q').textContent = M.question || 'Which row of images do you prefer?';
+  $('introMeta').textContent = state.trials.length + ' comparisons · your ID: ' + state.pid;
+  if (CONFIG.allowNoPreference) $('tieBtn').classList.remove('hide');
+
+  $('start').onclick = begin;
+  $('dl').onclick = download;
+  $('retry').onclick = function () {
+    flush(function (ok) {
+      if (ok) {
+        $('doneWarn').classList.add('hide');
+        $('retry').classList.add('hide');
+        $('doneMeta').textContent = 'Your answers have been sent. You can close this tab now.';
+      }
+    });
+  };
+  $('zoomBtn').onclick = toggleZoom;
+  $('tieBtn').onclick = function () { choose(null); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-slot]'), function (el) {
+    el.addEventListener('click', function () { choose(el.getAttribute('data-slot')); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if ($('trial').classList.contains('hide') && $('zoom').classList.contains('hide')) return;
+    if (e.key === '1' || e.key === 'ArrowUp') { choose('top'); e.preventDefault(); }
+    else if (e.key === '2' || e.key === 'ArrowDown') { choose('bottom'); e.preventDefault(); }
+    else if (e.key === '0' && CONFIG.allowNoPreference) choose(null);
+    else if (e.key === 'z' || e.key === 'Z') toggleZoom();
+    else if (e.key === 'Escape') closeZoom();
+  });
+  window.addEventListener('resize', function () {
+    if (!$('trial').classList.contains('hide') && !gateWidth()) {
+      $('trial').classList.add('hide');
+      $('toosmall').classList.remove('hide');
+    } else if (!$('toosmall').classList.contains('hide') && gateWidth() && state.i > 0) {
+      $('toosmall').classList.add('hide');
+      $('trial').classList.remove('hide');
+    }
+  });
+  // Anything still queued from an interrupted session goes out on load.
+  flush();
+  mark();
+}
+
+init();
+</script>
+</body>
+</html>

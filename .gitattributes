@@ -1,0 +1,3 @@
+# Keep line endings stable: the files are edited on Windows and served on Linux.
+* text=auto eol=lf
+*.webp binary
