@@ -21,7 +21,8 @@ const ctx = { console, Math, Number, String, Date, isNaN, JSON, Utilities: {} };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(HERE, 'apps_script.gs'), 'utf8'), ctx);
-const { computeStats, summaryLayout, binomTwoSided, modelColumns, matrixCell } = ctx;
+const { computeStats, summaryLayout, binomTwoSided, modelColumns, matrixCell,
+        contentSignature } = ctx;
 
 // --- the binomial test must match Python's math.comb version ---------------
 const closeTo = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -145,6 +146,53 @@ if (existsSync(mtxPath)) {
 const lay = summaryLayout(stats, { updated: '2026-07-30 12:00' });
 assert.ok(lay.grid.length > 10);
 assert.equal(lay.heads.length, 5, 'expected 5 section headings');
+
+/*
+ * Every number format is applied by anchor, so each anchor must really point at
+ * its header row and each formatted column must really hold that kind of value.
+ * Getting this wrong is what printed "comparisons = 2000.0%".
+ */
+// Array.from: the grid comes from the vm context, so its arrays have a
+// different Array prototype and deepStrictEqual would reject them.
+const at = (row) => Array.from(lay.grid[row - 1] || []);      // anchors are 1-based
+assert.equal(at(lay.titleRow)[0], 'Study results');
+assert.deepEqual(at(lay.rank.header),
+  ['rank', 'model', 'wins', 'comparisons', 'win rate', 'beats', 'loses to', 'note']);
+assert.equal(at(lay.rank.header)[lay.rank.rateCol - 1], 'win rate',
+  'rank.rateCol does not point at the win rate column');
+assert.deepEqual(at(lay.h2h.header),
+  ['preferred', 'over', 'score', 'rate', 'ties', 'p (two-sided)', 'significant?']);
+assert.equal(at(lay.h2h.header)[lay.h2h.rateCol - 1], 'rate');
+assert.equal(at(lay.h2h.header)[lay.h2h.pCol - 1], 'p (two-sided)');
+assert.equal(at(lay.h2h.header).length, lay.h2h.width);
+assert.equal(at(lay.part.header)[0], 'participant');
+assert.equal(at(lay.part.header)[lay.part.firstRateCol - 1], cols[0] + ' win rate');
+
+// the values under those anchors must be of the right kind
+for (let i = 1; i <= lay.rank.rows; i++) {
+  const r = at(lay.rank.header + i);
+  assert.ok(Number.isInteger(r[2]) && Number.isInteger(r[3]),
+    `ranking row ${i}: wins/comparisons must be counts, got ${r[2]}/${r[3]}`);
+  assert.ok(r[4] >= 0 && r[4] <= 1, `ranking row ${i}: win rate ${r[4]} is not a fraction`);
+  assert.ok(r[3] >= r[2], 'comparisons cannot be fewer than wins');
+}
+for (let i = 1; i <= lay.h2h.rows; i++) {
+  const r = at(lay.h2h.header + i);
+  assert.ok(r[3] >= 0 && r[3] <= 1, `h2h row ${i}: rate ${r[3]} is not a fraction`);
+  assert.ok(r[5] >= 0 && r[5] <= 1, `h2h row ${i}: p ${r[5]} is not a probability`);
+  assert.ok(r[6] === 'YES' || r[6] === 'no');
+}
+for (let i = 1; i <= lay.part.rows; i++) {
+  const r = at(lay.part.header + i);
+  assert.ok(Number.isInteger(r[1]), 'participant comparisons must be a count');
+  for (let c = 0; c < cols.length; c++) {
+    const v = r[lay.part.firstRateCol - 1 + c];
+    assert.ok(v === '' || (v >= 0 && v <= 1), `participant rate ${v} is not a fraction`);
+  }
+}
+assert.ok(!lay.rank.rows || at(lay.rank.header + lay.rank.rows + 1).length === 0,
+  'the ranking block runs past its row count');
+console.log('[ok] layout anchors point at the right rows and value kinds');
 const flat = lay.grid.map(r => r.join('|'));
 ['Ranking', 'Head to head', 'Preference matrix', 'Preference rate matrix', 'Per participant']
   .forEach(h => assert.ok(flat.some(l => l === h || l.startsWith(h + '|')), `missing "${h}"`));
@@ -165,5 +213,30 @@ stats.participants.forEach(P => {
 });
 console.log(`[ok] summary layout: ${lay.grid.length} rows, 5 sections, ` +
             `${stats.participants.length} participant row(s)`);
+
+/*
+ * The auto-update trigger relies on this: rebuilding the Summary must not change
+ * the responses signature (or the rebuild would trigger itself forever), while
+ * any real edit or deletion must change it.
+ */
+const base = [header].concat(rows);
+assert.equal(contentSignature(base), contentSignature(base.map(r => r.slice())),
+  'signature is not stable for identical data');
+assert.notEqual(contentSignature(base), contentSignature(base.slice(0, -1)),
+  'deleting a row must change the signature');
+const edited = base.map(r => r.slice());
+const wi = header.indexOf('winner');
+edited[1][wi] = edited[1][wi] === cols[0] ? cols[1] : cols[0];
+assert.notEqual(contentSignature(base), contentSignature(edited),
+  'editing a winner must change the signature');
+const cosmetic = base.map(r => r.slice());
+const ui = header.indexOf('user_agent');
+if (ui >= 0) {
+  cosmetic[1][ui] = 'something else entirely';
+  assert.equal(contentSignature(base), contentSignature(cosmetic),
+    'a column the stats ignore should not force a rebuild');
+}
+assert.equal(contentSignature([]), 'empty');
+console.log('[ok] content signature: stable on rewrite, changes on edit/delete');
 
 console.log('\nALL CHECKS PASSED');

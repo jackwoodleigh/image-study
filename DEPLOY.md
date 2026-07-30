@@ -122,8 +122,23 @@ holding the same statistics as the desktop app's final screen:
   median means someone was clicking without looking) and their win rate per
   model, so you can spot a rater who disagrees with everyone else.
 
-It rebuilds automatically as responses arrive, at most once a minute, and you
-can force it from the **Study → Rebuild summary** menu in the spreadsheet.
+### Keeping it up to date by itself
+
+Run **Study → Turn ON auto-update** once. From then on the Summary follows the
+responses sheet with no clicking: incoming responses, hand edits, and **deleted
+rows** all rebuild it within a second or two, and a 5-minute backstop catches
+anything a trigger missed.
+
+This needs one manual run because a script isn't allowed to install its own
+change trigger from the menu-building code — so it's a single click, not
+something that can happen on its own. **Study → Turn OFF auto-update** removes
+the triggers again, and **Rebuild summary now** always forces a rebuild.
+
+Why it can't loop: writing the Summary sheet also fires a change event, so the
+rebuild is keyed on a *signature of the responses* (row count plus the fields
+the statistics use). Rewriting the Summary leaves that signature untouched, so
+the follow-up event stops immediately, while a genuine edit or deletion changes
+it and rebuilds. `summary_selftest.mjs` asserts exactly that property.
 
 The maths is a port of `preference_study.py` and is tested against it:
 `node web/summary_selftest.mjs` feeds `results/all_trials.csv` through the Apps

@@ -87,7 +87,10 @@ function json(obj) {
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Study')
-    .addItem('Rebuild summary', 'buildSummary')
+    .addItem('Rebuild summary now', 'rebuildNow')
+    .addSeparator()
+    .addItem('Turn ON auto-update', 'installTriggers')
+    .addItem('Turn OFF auto-update', 'removeTriggers')
     .addToUi();
 }
 
@@ -103,6 +106,98 @@ function maybeRebuild() {
   } catch (err) {
     // Never let a summary problem break data collection.
   }
+}
+
+/* ----------------------------------------------------------------------- */
+/* keeping the Summary current automatically                               */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * Editing or DELETING rows by hand fires an onChange event, but only for an
+ * installable trigger -- a plain onChange() function in the file is not enough,
+ * and a simple trigger is not allowed to create one. So this is run once from
+ * Study > Turn ON auto-update.
+ */
+function installTriggers() {
+  removeTriggers();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss).onChange().create();
+  // Backstop, in case a change event is ever missed: cheap because it skips
+  // the rebuild when the data has not actually changed.
+  ScriptApp.newTrigger('onSheetTimer').timeBased().everyMinutes(5).create();
+  buildSummary(true);
+  toast('Auto-update is ON: the Summary now follows every edit, deletion and ' +
+        'incoming response.');
+}
+
+function removeTriggers() {
+  var all = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < all.length; i++) {
+    var fn = all[i].getHandlerFunction();
+    if (fn === 'onSheetChange' || fn === 'onSheetTimer') ScriptApp.deleteTrigger(all[i]);
+  }
+}
+
+function autoUpdateOn() {
+  var all = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].getHandlerFunction() === 'onSheetChange') return true;
+  }
+  return false;
+}
+
+/*
+ * Any hand edit, row insert or row delete lands here.
+ *
+ * Deliberately NOT forced: writing the Summary sheet fires onChange again, so a
+ * forced rebuild here would trigger itself forever. Unforced, the second hop
+ * sees an unchanged responses signature and stops immediately -- while a real
+ * edit or deletion does change it and rebuilds.
+ */
+function onSheetChange(e) {
+  if (CacheService.getScriptCache().get('rebuilding')) return;
+  buildSummary(false);
+}
+
+function onSheetTimer() {
+  if (CacheService.getScriptCache().get('rebuilding')) return;
+  buildSummary(false);            // no-op unless the data actually changed
+}
+
+function rebuildNow() {
+  buildSummary(true);
+  toast('Summary rebuilt.' + (autoUpdateOn() ? '' :
+        ' Tip: Study > Turn ON auto-update keeps it current by itself.'));
+}
+
+function toast(msg) {
+  try { SpreadsheetApp.getActiveSpreadsheet().toast(msg, 'Study', 6); } catch (err) {}
+}
+
+/*
+ * Signature of the response data. Any added row, deleted row, or edit to a
+ * field the statistics depend on changes it; rewriting the Summary sheet does
+ * not. That is what makes the change trigger safe to leave on.
+ */
+function contentSignature(values) {
+  if (!values.length) return 'empty';
+  var header = values[0].map(function (v) { return String(v); });
+  var at = {};
+  for (var i = 0; i < header.length; i++) at[header[i]] = i;
+  var keys = ['participant', 'trial', 'top_model', 'bottom_model', 'winner', 'loser',
+              'chosen_position', 'response_ms', 'class_id'];
+  var use = [];
+  for (var k = 0; k < keys.length; k++) if (at[keys[k]] !== undefined) use.push(at[keys[k]]);
+
+  var parts = [String(values.length), header.join(',')];
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    for (var u = 0; u < use.length; u++) parts.push(String(row[use[u]]));
+  }
+  var s = parts.join('');
+  var hash = 5381;
+  for (var c = 0; c < s.length; c++) hash = ((hash << 5) + hash + s.charCodeAt(c)) | 0;
+  return values.length + ':' + (hash >>> 0).toString(36);
 }
 
 /* ======================================================================= */
@@ -311,7 +406,7 @@ function summaryLayout(stats, meta) {
   var bold = [], heads = [], boxes = [];
   function put(arr) { g.push(arr); return g.length; }      // 1-based row index
 
-  bold.push(put(['Study results']));
+  var titleRow = put(['Study results']);
   put([meta.updated ? 'updated ' + meta.updated : '']);
   put([stats.used + ' comparisons  ·  ' + stats.participants.length + ' participant(s)  ·  ' +
        cols.length + ' models' +
@@ -320,8 +415,11 @@ function summaryLayout(stats, meta) {
   put([]);
 
   heads.push(put(['Ranking']));
-  bold.push(put(['rank', 'model', 'wins', 'comparisons', 'win rate',
-                 'beats', 'loses to', 'note']));
+  // Anchors are returned explicitly. Deriving them from the order of the bold
+  // rows silently shifted every number format by one block.
+  var rankHeader = put(['rank', 'model', 'wins', 'comparisons', 'win rate',
+                        'beats', 'loses to', 'note']);
+  bold.push(rankHeader);
   stats.ranking.forEach(function (r) {
     put([r.rank, r.model, r.wins, r.comparisons, r.rate,
          record(r.beats), record(r.loses_to), r.note]);
@@ -329,8 +427,9 @@ function summaryLayout(stats, meta) {
   put([]);
 
   heads.push(put(['Head to head']));
-  bold.push(put(['preferred', 'over', 'score', 'rate', 'ties',
-                 'p (two-sided)', 'significant?']));
+  var h2hHeader = put(['preferred', 'over', 'score', 'rate', 'ties',
+                       'p (two-sided)', 'significant?']);
+  bold.push(h2hHeader);
   stats.h2h.forEach(function (e) {
     if (e.drawn) {
       put([e.a + ' and ' + e.b + ' tied', '', e.wins_a + '-' + e.wins_b, e.rate, e.ties,
@@ -381,8 +480,9 @@ function summaryLayout(stats, meta) {
   heads.push(put(['Per participant']));
   put(['median time is a quality check: a very fast median suggests clicking ' +
        'without looking.']);
-  bold.push(put(['participant', 'comparisons', 'median ms']
-    .concat(cols.map(function (c) { return c + ' win rate'; }))));
+  var partHeader = put(['participant', 'comparisons', 'median ms']
+    .concat(cols.map(function (c) { return c + ' win rate'; })));
+  bold.push(partHeader);
   stats.participants.forEach(function (P) {
     var line = [P.pid, P.n, P.median_ms];
     cols.forEach(function (c) {
@@ -391,17 +491,44 @@ function summaryLayout(stats, meta) {
     put(line);
   });
 
-  return { grid: g, bold: bold, heads: heads, boxes: boxes, rateCells: rateCells,
-           rankRows: stats.ranking.length, cols: cols.length };
+  return {
+    grid: g, bold: bold, heads: heads, boxes: boxes, rateCells: rateCells,
+    titleRow: titleRow, cols: cols.length,
+    // (header row, number of data rows, 1-based column of the value to format)
+    rank: { header: rankHeader, rows: stats.ranking.length, rateCol: 5 },
+    h2h: { header: h2hHeader, rows: stats.h2h.length, rateCol: 4, pCol: 6, width: 7 },
+    part: { header: partHeader, rows: stats.participants.length, firstRateCol: 4 }
+  };
 }
 
 /* ======================================================================= */
 /* writing the Summary sheet                                               */
 /* ======================================================================= */
 
-function buildSummary() {
+function buildSummary(force) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var src = ss.getSheets()[0];
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;                     // a rebuild is already running
+  var cache = CacheService.getScriptCache();
+  var props = PropertiesService.getScriptProperties();
+  try {
+    var values = src.getLastRow()
+      ? src.getRange(1, 1, src.getLastRow(), src.getLastColumn()).getValues()
+      : [];
+    var sig = contentSignature(values);
+    if (!force && props.getProperty('signature') === sig) return;   // nothing changed
+    // Our own writes fire onChange too; this stops the trigger re-entering.
+    cache.put('rebuilding', '1', 120);
+    writeSummary(ss, values);
+    props.setProperty('signature', sig);
+  } finally {
+    cache.remove('rebuilding');
+    lock.releaseLock();
+  }
+}
+
+function writeSummary(ss, values) {
   var out = ss.getSheetByName(SUMMARY_NAME);
   if (!out) {
     out = ss.insertSheet(SUMMARY_NAME, 1);
@@ -409,11 +536,10 @@ function buildSummary() {
   out.clear();
   out.clearFormats();
 
-  if (src.getLastRow() < 2) {
+  if (values.length < 2) {
     out.getRange(1, 1).setValue('No responses yet.');
     return;
   }
-  var values = src.getRange(1, 1, src.getLastRow(), src.getLastColumn()).getValues();
   var header = values[0].map(function (v) { return String(v); });
   var stats = computeStats(header, values.slice(1));
   if (!stats.cols.length) {
@@ -437,7 +563,7 @@ function buildSummary() {
   out.getRange(1, 1, padded.length, width).setValues(padded);
 
   // titles, headers, boxes
-  out.getRange(1, 1, 1, width).setFontSize(14).setFontWeight('bold');
+  out.getRange(lay.titleRow, 1, 1, width).setFontSize(14).setFontWeight('bold');
   lay.heads.forEach(function (r) {
     out.getRange(r, 1, 1, width).setFontWeight('bold').setFontSize(11)
       .setBackground(null).setFontColor('#1a56db');
@@ -452,16 +578,23 @@ function buildSummary() {
       .setFontWeight('bold');
   });
 
-  // number formats: win rate columns and p-values
-  var rankHead = lay.bold[0];                     // ranking header row
-  out.getRange(rankHead + 1, 5, lay.rankRows, 1).setNumberFormat('0.0%');
-  var h2hHead = lay.bold[1];
-  out.getRange(h2hHead + 1, 4, stats.h2h.length, 1).setNumberFormat('0.0%');
-  out.getRange(h2hHead + 1, 6, stats.h2h.length, 1).setNumberFormat('0.0000');
+  // number formats, addressed by explicit anchors so nothing can shift
+  if (lay.rank.rows) {
+    out.getRange(lay.rank.header + 1, lay.rank.rateCol, lay.rank.rows, 1)
+      .setNumberFormat('0.0%');
+    out.getRange(lay.rank.header + 1, 3, lay.rank.rows, 2).setNumberFormat('0');
+  }
+  if (lay.h2h.rows) {
+    out.getRange(lay.h2h.header + 1, lay.h2h.rateCol, lay.h2h.rows, 1)
+      .setNumberFormat('0.0%');
+    out.getRange(lay.h2h.header + 1, lay.h2h.pCol, lay.h2h.rows, 1)
+      .setNumberFormat('0.0000');
+  }
   // green when a pair is significant
   stats.h2h.forEach(function (e, i) {
     if (!e.drawn && e.p < 0.05) {
-      out.getRange(h2hHead + 1 + i, 1, 1, 7).setFontColor('#0f7a4d').setFontWeight('bold');
+      out.getRange(lay.h2h.header + 1 + i, 1, 1, lay.h2h.width)
+        .setFontColor('#0f7a4d').setFontWeight('bold');
     }
   });
   // rate matrix: colour by who was preferred
@@ -472,10 +605,10 @@ function buildSummary() {
     else if (c.rate < 0.5) r.setFontColor('#8b93a1');
   });
   // per-participant win rates
-  var partHead = lay.bold[lay.bold.length - 1];
-  if (stats.participants.length) {
-    out.getRange(partHead + 1, 4, stats.participants.length, lay.cols)
+  if (lay.part.rows) {
+    out.getRange(lay.part.header + 1, lay.part.firstRateCol, lay.part.rows, lay.cols)
       .setNumberFormat('0.0%');
+    out.getRange(lay.part.header + 1, 2, lay.part.rows, 2).setNumberFormat('0');
   }
 
   out.setColumnWidth(1, 190);
